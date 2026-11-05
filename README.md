@@ -14,10 +14,11 @@ sandbox can warp.
 | [source.coop/ausantarctic](https://source.coop/ausantarctic) | 34 | Bedmap3 (7 layers), GEBCO 2024 to 2026, IBCSO v1, v2, annual 2024 and 2025 (bed, ice surface, RID, TID, charts), GHRSST MUR v2 (5 variables, daily from 2002-06-01) |
 | the [sds](https://github.com/hypertidy/sds) registry | 68 | elevation and bathymetry VRTs and COGs (Copernicus, NASADEM, SRTM15+, REMA, older GEBCO, IBCSO, Tasmania 2 m), and 50+ WMTS / GDAL WMS imagery and basemaps |
 
-Of the 102, GDAL opened 99 when probed (2026-11-05, GDAL 3.14.0dev). The three
-it couldn't are sds WMTS entries: `esri_dark_gray` and `esri_light_gray` (Esri
-renamed the layers to `Canvas_World_*_Gray_Base`) and `wa_gsd_basemap` (no
-`layer=`, and two tile matrix sets both named `default`).
+All 102 open with GDAL (probed 2026-11-05, GDAL 3.14.0dev). Three sds entries
+needed fixes first (sds branch `fix/wmts-esri-wa`): `esri_dark_gray` and
+`esri_light_gray` (Esri renamed the layers to `Canvas_World_*_Gray_Base`), and
+`wa_gsd_basemap`, whose WMTS tile matrix origin is written in the wrong axis
+order for EPSG:7844 (now a GDAL_WMS TMS description of its tile cache).
 
 ```r
 library(warpsandbox)
