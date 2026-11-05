@@ -1,0 +1,19 @@
+Package: warpsandbox
+Title: A Test Sandbox for Raster Warp Engines
+Version: 0.0.0.9000
+Authors@R: person("Michael", "Sumner", email = "mdsumner@gmail.com", role = c("aut", "cre"))
+Description: A catalogue of cloud-ready raster sources and (later) a plumber2
+    service that warps them with several engines (rwarp, GDAL via gdalraster,
+    vapour and GDAL7) and compares the results.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    curl,
+    jsonlite,
+    xml2
+Suggests:
+    arrow,
+    gdalraster,
+    sds,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
