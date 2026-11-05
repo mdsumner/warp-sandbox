@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>warp sandbox</title>
+<style>
+  :root { --fg: #1d2330; --muted: #5f6b7a; --line: #d9dee5; --bg: #f6f7f9; --accent: #2d6cdf; --bad: #b3261e; --good: #1e7b34; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.45 system-ui, sans-serif; color: var(--fg); margin: 0; background: var(--bg); }
+  header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--line); background: #fff; }
+  header h1 { margin: 0; font-size: 1.25rem; }
+  header p { margin: .25rem 0 0; color: var(--muted); }
+  main { padding: 1rem 1.5rem; display: grid; grid-template-columns: 20rem 1fr; gap: 1.5rem; align-items: start; }
+  form { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; position: sticky; top: 1rem; }
+  label { display: block; font-weight: 600; font-size: .85rem; margin: .75rem 0 .25rem; }
+  label:first-child { margin-top: 0; }
+  input, select { width: 100%; padding: .4rem .5rem; font: inherit; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+  .row { display: flex; gap: .5rem; } .row > * { flex: 1; }
+  .checks label { display: inline-flex; gap: .3rem; align-items: center; font-weight: 400; margin: .2rem .8rem .2rem 0; }
+  .checks input { width: auto; }
+  button { margin-top: 1rem; width: 100%; padding: .55rem; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 5px; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .hint { color: var(--muted); font-size: .8rem; margin-top: .25rem; }
+  #status { color: var(--muted); margin-bottom: .75rem; min-height: 1.2em; }
+  #status.error { color: var(--bad); }
+  #summary { font-size: .85rem; color: var(--muted); margin-bottom: 1rem; word-break: break-all; }
+  #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 1rem; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: .75rem; }
+  .card h2 { font-size: 1rem; margin: 0 0 .5rem; }
+  .card h2 small { color: var(--muted); font-weight: 400; }
+  .card img { width: 100%; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px;
+    background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .5rem; }
+  td { padding: .15rem 0; border-bottom: 1px solid var(--line); } td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .same { color: var(--good); font-weight: 600; } .differs { color: var(--bad); font-weight: 600; }
+  details { margin-top: .5rem; font-size: .82rem; } summary { cursor: pointer; color: var(--muted); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } form { position: static; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>warp sandbox</h1>
+  <p>The same warp through several engines, read at the same overview level, with the differences from the first (the reference).</p>
+</header>
+<main>
+<form id="f">
+  <label for="source">Source</label>
+  <select id="source" name="source"></select>
+  <div class="hint" id="source-info"></div>
+
+  <label for="date">Date <span class="hint">(dated sources only)</span></label>
+  <input id="date" name="date" type="date">
+
+  <label for="preset">Destination</label>
+  <select id="preset">
+    <option value="">(custom)</option>
+    <option value="EPSG:3031|-4e6,4e6,-4e6,4e6" selected>Antarctica, polar stereographic</option>
+    <option value="EPSG:3031|-1e6,1e6,1e6,3e6">Antarctic Peninsula, polar stereographic</option>
+    <option value="+proj=laea +lat_0=-42 +lon_0=147|-6e5,6e5,-6e5,6e5">Tasmania, Lambert azimuthal</option>
+    <option value="EPSG:4326|-180,180,-90,90">World, longitude/latitude</option>
+    <option value="EPSG:3857|-20037508,20037508,-20037508,20037508">World, Web Mercator</option>
+    <option value="EPSG:3413|-4e6,4e6,-4e6,4e6">Arctic, polar stereographic</option>
+  </select>
+  <label for="crs">CRS</label>
+  <input id="crs" name="crs">
+  <label for="extent">Extent <span class="hint">xmin,xmax,ymin,ymax</span></label>
+  <input id="extent" name="extent">
+
+  <div class="row">
+    <div><label for="dim">Size</label><input id="dim" name="dim" value="384,384"></div>
+    <div><label for="resample">Kernel</label>
+      <select id="resample" name="resample">
+        <option>near</option><option selected>bilinear</option><option>cubic</option><option>cubicspline</option>
+        <option>lanczos</option><option>average</option><option>mode</option><option>min</option>
+        <option>max</option><option>med</option><option>rms</option>
+      </select></div>
+  </div>
+  <div class="row">
+    <div><label for="ovr">Overview</label><input id="ovr" name="ovr" value="auto"></div>
+    <div><label for="palette">Palette</label><input id="palette" name="palette" value="viridis"></div>
+  </div>
+
+  <label>Engines <span class="hint">(the first ticked is the reference)</span></label>
+  <div class="checks" id="engines"></div>
+  <label class="checks"><input type="checkbox" id="cold" checked> clear the HTTP cache before each engine</label>
+
+  <button id="go" type="submit">Warp and compare</button>
+</form>
+
+<section>
+  <div id="status">Loading the catalogue…</div>
+  <div id="summary"></div>
+  <div id="cards"></div>
+</section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let sources = [];
+
+function fmt(x) {
+  if (x === null || x === undefined) return "–";
+  if (typeof x === "number") return Math.abs(x) >= 1000 || Number.isInteger(x) ? x.toLocaleString() : x.toPrecision(3);
+  return String(x);
+}
+
+function applyPreset() {
+  const v = $("preset").value;
+  if (!v) return;
+  const [crs, ext] = v.split("|");
+  $("crs").value = crs; $("extent").value = ext;
+}
+
+function showSourceInfo() {
+  const s = sources.find((x) => x.id === $("source").value);
+  if (!s) return;
+  const dated = !!s.dsn_template;
+  $("date").disabled = !dated;
+  if (dated) { $("date").min = s.time_start; $("date").max = s.time_end; if (!$("date").value) $("date").value = s.time_end; }
+  $("source-info").textContent = `${s.ncol.toLocaleString()} × ${s.nrow.toLocaleString()} ${s.dtype}, ${s.nbands} band(s), ${s.crs}, ${s.n_overviews} overviews` + (dated ? `; ${s.time_start} to ${s.time_end}` : "");
+}
+
+async function init() {
+  const [cat, eng] = await Promise.all([fetch("catalogue?ok_only=true").then((r) => r.json()), fetch("engines").then((r) => r.json())]);
+  sources = cat;
+  const groups = {};
+  for (const s of cat) (groups[`${s.origin}: ${s.theme}`] ||= []).push(s);
+  for (const [g, list] of Object.entries(groups)) {
+    const og = document.createElement("optgroup"); og.label = g;
+    for (const s of list) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.id; og.appendChild(o); }
+    $("source").appendChild(og);
+  }
+  $("source").value = "ausantarctic/gebco/GEBCO_2025";
+  for (const e of eng) {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="checkbox" value="${e.engine}" ${e.available ? "checked" : "disabled"}> ${e.engine}`;
+    l.title = e.about;
+    $("engines").appendChild(l);
+  }
+  applyPreset(); showSourceInfo();
+  $("status").textContent = `${cat.length} sources. Pick one and a destination.`;
+}
+
+async function run(ev) {
+  ev.preventDefault();
+  const engines = [...$("engines").querySelectorAll("input:checked")].map((i) => i.value);
+  if (!engines.length) { $("status").textContent = "Tick at least one engine."; return; }
+  const p = new URLSearchParams({
+    source: $("source").value, crs: $("crs").value, extent: $("extent").value, dim: $("dim").value,
+    resample: $("resample").value, ovr: $("ovr").value, palette: $("palette").value,
+    engines: engines.join(","), cold: $("cold").checked, images: true });
+  if (!$("date").disabled && $("date").value) p.set("date", $("date").value);
+  $("go").disabled = true; $("status").className = ""; $("status").textContent = "Warping…"; $("cards").innerHTML = "";
+  try {
+    const r = await fetch("compare?" + p.toString());
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || j.title || r.statusText);
+    render(j);
+    $("status").textContent = `Done. Reference: ${j.reference}.`;
+  } catch (e) {
+    $("status").className = "error"; $("status").textContent = "Error: " + e.message;
+  } finally { $("go").disabled = false; }
+}
+
+function render(j) {
+  const q = j.request, o = q.overview;
+  $("summary").textContent = `${q.source} → ${q.crs}, ${q.dim.join(" × ")} px, ${q.resample}, bands ${[].concat(q.bands).join(",")}, read at ` +
+    (o.level < 0 ? "full resolution" : `overview ${o.level} (1/${fmt(o.factor)})`) + ` [${o.rule}]`;
+  for (const [name, e] of Object.entries(j.engines)) {
+    const c = document.createElement("div"); c.className = "card";
+    if (e.error) { c.innerHTML = `<h2>${name}</h2><p class="differs">${e.error}</p>`; $("cards").appendChild(c); continue; }
+    const sec = Object.entries(e.seconds).map(([k, v]) => `<tr><td>${k} (s)</td><td>${fmt(v)}</td></tr>`).join("");
+    let vs = "";
+    if (e.vs_reference) {
+      const d = e.vs_reference;
+      const same = d.identical_values === d.compared_values && !d.valid_only_in_reference && !d.valid_only_in_this;
+      vs = `<tr><td>vs ${j.reference}</td><td class="${same ? "same" : "differs"}">${same ? "identical" : "differs"}</td></tr>
+        <tr><td>identical values</td><td>${fmt(d.identical_values)} / ${fmt(d.compared_values)}</td></tr>
+        <tr><td>max |difference|</td><td>${fmt(d.max_abs)}</td></tr>
+        <tr><td>mean |difference|</td><td>${fmt(d.mean_abs)}</td></tr>
+        <tr><td>valid only in ${j.reference} / here</td><td>${fmt(d.valid_only_in_reference)} / ${fmt(d.valid_only_in_this)}</td></tr>`;
+    }
+    c.innerHTML = `<h2>${name} ${e.vs_reference ? "" : "<small>reference</small>"}</h2><img alt="${name}" src="${e.png}"><table>${sec}${vs}</table>` +
+      (e.diff_png ? `<details><summary>difference image (white is equal; magenta is a value in only one)</summary><img alt="difference" src="${e.diff_png}"></details>` : "");
+    $("cards").appendChild(c);
+  }
+}
+
+$("preset").addEventListener("change", applyPreset);
+$("crs").addEventListener("input", () => ($("preset").value = ""));
+$("extent").addEventListener("input", () => ($("preset").value = ""));
+$("source").addEventListener("change", showSourceInfo);
+$("f").addEventListener("submit", run);
+init().catch((e) => { $("status").className = "error"; $("status").textContent = "Could not load the catalogue: " + e.message; });
+</script>
+</body>
+</html>

@@ -9,11 +9,17 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:
     curl,
+    gdalraster,
     jsonlite,
+    png,
+    rwarp,
     xml2
 Suggests:
     arrow,
-    gdalraster,
+    GDAL7,
+    pkgload,
+    plumber2,
+    reqres,
     sds,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

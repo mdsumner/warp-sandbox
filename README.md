@@ -1,9 +1,77 @@
 # warpsandbox
 
-A test sandbox for raster warp engines. The plan is a plumber2 service that
-warps the same request with rwarp, GDAL (via gdalraster and vapour) and GDAL7,
-and compares the results. This first part is **the catalogue**: what the
-sandbox can warp.
+A test sandbox for raster warp engines: a plumber2 service that warps the
+same request with several engines and compares the results, over a catalogue
+of 102 cloud-ready sources.
+
+## Run it
+
+```sh
+Rscript -e 'warpsandbox::sandbox_run()'          # 127.0.0.1:8090; under tmux on a server
+ssh -L 8090:localhost:8090 <server>              # from your machine
+```
+
+then open <http://localhost:8090/>: pick a source and a destination, tick
+engines, and see each one's image, timings and differences from the first.
+
+## Engines
+
+| engine | what |
+|---|---|
+| `rwarp` | [rwarp](https://github.com/hypertidy/rwarp) (Rust): `warp_plan()` + `warp_exec()`, reading with gdalraster |
+| `gdal-app` | gdalwarp as a library, `gdalraster::warp()` |
+| `gdal7-run` | `gdal raster reproject` through `GDAL7::gdal_run()` |
+
+A request is resolved once and every engine gets it unchanged: the same DSN,
+the same destination grid, kernel and bands, and the **same overview level**
+(`ovr=auto` picks the coarsest overview that is still at least as fine as the
+destination). rwarp and gdal7-run open the source with `OVERVIEW_LEVEL=k
+only` (`only`, so GDAL can't pick a further overview by itself); gdal-app uses
+gdalwarp's `-ovr k`, because `gdalraster::warp()` opens the source itself.
+`/compare` clears GDAL's HTTP cache before each engine (`cold=true`), so
+timings are comparable.
+
+### What agrees (2026-11-05, GDAL 3.14.0dev)
+
+All three engines give **identical values** on: GEBCO 2025 (bilinear, to
+polar stereographic), GHRSST SST (cubic), IBCSO 2025 in EPSG:9354 (lanczos),
+Bedmap3 with nodata (average), and Esri World Imagery over WMTS (4-band, to a
+Lambert projection). On the WA tile cache (an alpha band), rwarp and gdalwarp
+are identical; gdal7-run differs, see below.
+
+### Findings
+
+- **An overview opened with `OVERVIEW_LEVEL=k` loses its alpha band's colour
+  interpretation** (`Alpha` at full resolution, `Undefined` at the overview).
+  gdalwarp with `-ovr k` still sees the alpha band and masks with it.
+  `gdal raster reproject` (no `-srcalpha` argument) opens the overview, so it
+  warps alpha as data: fully transparent pixels keep their colour where
+  gdalwarp writes 0. The sandbox takes the alpha band from the full-resolution
+  dataset for rwarp.
+- gdalraster's `$read()` returns nodata as `NA`. For integers that is
+  -2147483648, which a warp reads as a value; the rwarp engine puts the
+  nodata value back before warping.
+
+## Endpoints
+
+| | |
+|---|---|
+| `GET /` | the page |
+| `GET /health` | versions |
+| `GET /catalogue?theme=&origin=&ok_only=true` | sources |
+| `GET /source?id=` | one source in full |
+| `GET /engines` | engines and availability |
+| `GET /plan?…` | rwarp's chunk plan (no pixels read) |
+| `GET /warp?engine=&format=png\|json&palette=&…` | one engine |
+| `GET /compare?engines=a,b,c&cold=true&images=false&…` | timings and differences from the first engine |
+
+Request parameters: `source` (id or sds alias), `date` (dated sources),
+`crs`, `extent=xmin,xmax,ymin,ymax` or `bbox=xmin,ymin,xmax,ymax`,
+`dim=ncol,nrow` (up to 4096), `resample` (gdalwarp's kernels), `bands`, `ovr`
+(`auto`, `none` or a level). Bad requests get a 400 with a message.
+
+From R the same is `warp_request()`, `run_engine()`, `compare_engines()`,
+`as_nara()` and `as_png()`.
 
 ## The catalogue
 
@@ -70,8 +138,5 @@ probes each source.
 
 ## Next
 
-- the service: `/catalogue`, then `/warp?engine=&source=&crs=&extent=&dim=`,
-  `/plan`, `/compare` with the engines that work today (rwarp, gdalraster,
-  GDAL7 `gdal_run("raster reproject")`)
 - the GDAL7 direct engine (transformer + ReprojectImage into a nativeRaster)
-- a policy for your own URLs
+- a policy for your own URLs, before it runs anywhere public
