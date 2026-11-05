@@ -21,11 +21,12 @@ engines, and see each one's image, timings and differences from the first.
 | `rwarp` | [rwarp](https://github.com/hypertidy/rwarp) (Rust): `warp_plan()` + `warp_exec()`, reading with gdalraster |
 | `gdal-app` | gdalwarp as a library, `gdalraster::warp()` |
 | `gdal7-run` | `gdal raster reproject` through `GDAL7::gdal_run()` |
+| `gdal-direct` | GDAL's warp API with no utility layer: `GDALCreateGenImgProjTransformer2` + approx transformer, `GDALWarpOptions`, `GDALWarpOperation::ChunkAndWarpImage` into a MEM dataset (`inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp; a prototype for GDAL7) |
 
 A request is resolved once and every engine gets it unchanged: the same DSN,
 the same destination grid, kernel and bands, and the **same overview level**
 (`ovr=auto` picks the coarsest overview that is still at least as fine as the
-destination). rwarp and gdal7-run open the source with `OVERVIEW_LEVEL=k
+destination). rwarp, gdal7-run and gdal-direct open the source with `OVERVIEW_LEVEL=k
 only` (`only`, so GDAL can't pick a further overview by itself); gdal-app uses
 gdalwarp's `-ovr k`, because `gdalraster::warp()` opens the source itself.
 `/compare` clears GDAL's HTTP cache before each engine (`cold=true`), so
@@ -33,11 +34,16 @@ timings are comparable.
 
 ### What agrees (2026-11-05, GDAL 3.14.0dev)
 
-All three engines give **identical values** on: GEBCO 2025 (bilinear, to
+All four engines give **identical values** on: GEBCO 2025 (bilinear, to
 polar stereographic), GHRSST SST (cubic), IBCSO 2025 in EPSG:9354 (lanczos),
 Bedmap3 with nodata (average), and Esri World Imagery over WMTS (4-band, to a
-Lambert projection). On the WA tile cache (an alpha band), rwarp and gdalwarp
-are identical; gdal7-run differs, see below.
+Lambert projection). On the WA tile cache (an alpha band), rwarp, gdalwarp
+and gdal-direct are identical; gdal7-run differs, see below.
+
+Timings with `cold=true` are dominated by fetching. rwarp's extra second or
+so is in `fetch` (reading through gdalraster from R, a call per band per
+chunk), not in its kernel; `/warp?format=json` splits rwarp's time into plan,
+fetch and warp.
 
 ### Findings
 
@@ -142,5 +148,8 @@ probes each source.
 
 ## Next
 
-- the GDAL7 direct engine (transformer + ReprojectImage into a nativeRaster)
+- move gdal-direct into GDAL7 as a binding (and let it write straight into a
+  nativeRaster: a MEM dataset over the buffer, `PIXELOFFSET=4`, `BANDOFFSET=1`)
+- rwarp reading through GDAL in C++ (or GDAL7) instead of R, so its fetch
+  time is comparable
 - a policy for your own URLs, before it runs anywhere public

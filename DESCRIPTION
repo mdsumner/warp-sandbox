@@ -18,6 +18,7 @@ Suggests:
     arrow,
     GDAL7,
     pkgload,
+    Rcpp,
     plumber2,
     reqres,
     sds,

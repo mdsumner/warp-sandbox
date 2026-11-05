@@ -5,6 +5,7 @@
 ##  rwarp       rwarp::warp_plan() + warp_exec(), reading with gdalraster
 ##  gdal-app    gdalwarp as a library (gdalraster::warp()) into /vsimem/
 ##  gdal7-run   GDAL7::gdal_run("raster reproject") into a MEM dataset
+##  gdal-direct GDAL's warp API (transformer + GDALWarpOperation), C++
 ##
 ## All three read the source at the same overview level (OVERVIEW_LEVEL=k
 ## only, or gdalwarp's -ovr k), use gdalwarp's default error threshold
@@ -127,10 +128,44 @@ engine_gdal7_run <- function(req) {
        seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1))
 }
 
+## gdal-direct is C++ (inst/cpp/gdal_direct.cpp), compiled on first use into
+## a per-user cache, so the package itself stays pure R.
+gdal_direct_env <- new.env()
+
+gdal_direct_fun <- function() {
+  if (!is.null(gdal_direct_env$f)) return(gdal_direct_env$f)
+  if (!requireNamespace("Rcpp", quietly = TRUE)) stop("gdal-direct needs Rcpp", call. = FALSE)
+  src <- system.file("cpp", "gdal_direct.cpp", package = "warpsandbox")
+  if (!nzchar(src)) src <- file.path("inst", "cpp", "gdal_direct.cpp")
+  cfg <- function(a) tryCatch(system2("gdal-config", a, stdout = TRUE), error = function(e) "")
+  old <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS"), unset = NA)
+  on.exit(for (n in names(old)) if (is.na(old[[n]])) Sys.unsetenv(n) else do.call(Sys.setenv, as.list(old[n])))
+  Sys.setenv(PKG_CPPFLAGS = cfg("--cflags"), PKG_LIBS = cfg("--libs"))
+  cache <- tools::R_user_dir("warpsandbox", "cache")
+  dir.create(cache, recursive = TRUE, showWarnings = FALSE)
+  e <- new.env()
+  Rcpp::sourceCpp(src, env = e, cacheDir = cache, showOutput = FALSE)
+  gdal_direct_env$f <- e$gdal_direct_warp
+  gdal_direct_env$f
+}
+
+engine_gdal_direct <- function(req) {
+  f <- gdal_direct_fun()
+  t0 <- now()
+  r <- f(req$dsn, level_oo(req$ovr$level), as.integer(req$bands), req$dst_wkt,
+         as.numeric(req$dst_gt), as.integer(req$dim), req$resample, req$type, 0.125,
+         if (is.na(req$alpha)) 0L else as.integer(req$alpha))
+  t1 <- now()
+  a <- pack_bands(r$bands, req$dim[1], req$dim[2], req$type)
+  list(data = a, nodata = r$nodata,
+       seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1))
+}
+
 ENGINES <- list(
   "rwarp"     = list(fun = engine_rwarp, about = "rwarp (Rust): warp_plan() + warp_exec(), reading with gdalraster"),
   "gdal-app"  = list(fun = engine_gdal_app, about = "gdalwarp as a library, via gdalraster::warp()"),
-  "gdal7-run" = list(fun = engine_gdal7_run, about = "GDAL's `gdal raster reproject`, via GDAL7::gdal_run()")
+  "gdal7-run" = list(fun = engine_gdal7_run, about = "GDAL's `gdal raster reproject`, via GDAL7::gdal_run()"),
+  "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (C++, prototype for GDAL7)")
 )
 
 #' The engines and whether each is available here
@@ -140,7 +175,8 @@ engines <- function() {
              about = vapply(ENGINES, `[[`, "", "about"),
              available = c(requireNamespace("rwarp", quietly = TRUE),
                            requireNamespace("gdalraster", quietly = TRUE),
-                           requireNamespace("GDAL7", quietly = TRUE)),
+                           requireNamespace("GDAL7", quietly = TRUE),
+                           requireNamespace("Rcpp", quietly = TRUE) && nzchar(Sys.which("gdal-config"))),
              row.names = NULL, stringsAsFactors = FALSE)
 }
 

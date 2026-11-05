@@ -63,7 +63,8 @@ as_png <- function(res, palette = "viridis", range = NULL) {
 #' value.
 #'
 #' @param req A request from [warp_request()].
-#' @param engines Engine names; the first is the reference.
+#' @param engines Engine names; the first is the reference. Default: every
+#'   available engine, rwarp first.
 #' @param cold Clear GDAL's HTTP cache before each engine, so the timings are
 #'   comparable (otherwise later engines reuse what earlier ones fetched).
 #' @param images Also return each engine's PNG (and a difference image) as
@@ -72,8 +73,9 @@ as_png <- function(res, palette = "viridis", range = NULL) {
 #' @return A list: the request summary, per-engine timings, and per-engine
 #'   differences from the reference.
 #' @export
-compare_engines <- function(req, engines = c("rwarp", "gdal-app", "gdal7-run"),
+compare_engines <- function(req, engines = NULL,
                             cold = TRUE, images = FALSE, palette = "viridis", range = NULL) {
+  if (is.null(engines)) { av <- warpsandbox::engines(); engines <- av$engine[av$available] }
   res <- lapply(engines, function(e) {
     if (cold) gdalraster::vsi_curl_clear_cache()
     tryCatch(run_engine(req, e), error = function(err) list(engine = e, error = conditionMessage(err)))

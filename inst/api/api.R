@@ -113,14 +113,14 @@ function(query, response) {
 
 #* Compare engines on one request: timings and differences from the first (the reference)
 #* @get /compare
-#* @query engines:string("rwarp,gdal-app,gdal7-run")
+#* @query engines:string
 #* @query cold:boolean(true)
 #* @query images:boolean(false)
 #* @query palette:string("viridis")
 #* @serializer unboxedJSON{digits = NA}
 function(query) {
   r <- req_from(query)
-  e <- strsplit(q1(query$engines), ",", fixed = TRUE)[[1]]
+  e <- if (is.null(query$engines)) NULL else strsplit(q1(query$engines), ",", fixed = TRUE)[[1]]
   tryCatch(compare_engines(r, e, cold = isTRUE(query$cold), images = isTRUE(query$images),
                            palette = query$palette),
            error = function(err) reqres::abort_bad_request(conditionMessage(err)))

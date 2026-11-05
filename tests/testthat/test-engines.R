@@ -38,7 +38,7 @@ test_that("single-band data renders through the ramp with nodata transparent", {
 ## Engines against each other, on real sources (network).
 
 agree <- function(req) {
-  x <- compare_engines(req, cold = FALSE)
+  x <- compare_engines(req, c("rwarp", "gdal-app", "gdal7-run", "gdal-direct"), cold = FALSE)
   vapply(x$engines[-1], function(e) {
     v <- e$vs_reference
     is.null(e$error) && v$identical_values == v$compared_values &&
@@ -68,4 +68,16 @@ test_that("rwarp and gdalwarp agree on an alpha tile cache; gdal7-run keeps colo
   expect_identical(req$alpha, 4L)
   a <- agree(req)
   expect_true(a[["gdal-app"]])
+  expect_true(a[["gdal-direct"]])     # given the alpha band explicitly
+  expect_false(a[["gdal7-run"]])      # WMS overview bands have no alpha (GDAL 3.14)
+})
+
+test_that("gdal-direct compiles and matches gdalwarp on GHRSST (cubic, nodata)", {
+  skip_on_cran(); skip_if_offline("data.source.coop")
+  skip_if(!nzchar(Sys.which("gdal-config")), "no gdal-config")
+  req <- warp_request("ausantarctic/ghrsst-mur-v2/analysed_sst", date = "2024-03-01", crs = "EPSG:3031",
+                      extent = c(-4e6, 4e6, -4e6, 4e6), dim = c(96, 96), resample = "cubic")
+  x <- compare_engines(req, c("gdal-app", "gdal-direct"), cold = FALSE)
+  v <- x$engines[["gdal-direct"]]$vs_reference
+  expect_equal(v$identical_values, v$compared_values)
 })
