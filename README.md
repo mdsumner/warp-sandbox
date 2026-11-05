@@ -41,13 +41,17 @@ are identical; gdal7-run differs, see below.
 
 ### Findings
 
-- **An overview opened with `OVERVIEW_LEVEL=k` loses its alpha band's colour
-  interpretation** (`Alpha` at full resolution, `Undefined` at the overview).
-  gdalwarp with `-ovr k` still sees the alpha band and masks with it.
-  `gdal raster reproject` (no `-srcalpha` argument) opens the overview, so it
-  warps alpha as data: fully transparent pixels keep their colour where
-  gdalwarp writes 0. The sandbox takes the alpha band from the full-resolution
-  dataset for rwarp.
+- **WMS and WMTS overview bands report no colour interpretation**
+  (`Undefined` for every band; R/G/B/Alpha at full resolution; GeoTIFF is
+  fine). So a tile service opened at an overview with `OVERVIEW_LEVEL=k` has
+  no alpha band. gdalwarp with `-ovr k` still finds the alpha band on the full
+  dataset and masks with it; `gdal raster reproject` (no `-ovr`, no
+  `-srcalpha`) can only pin a level by opening the overview, so it warps
+  alpha as data: fully transparent pixels keep their colour where gdalwarp
+  writes 0. The sandbox takes the alpha band from the full-resolution dataset
+  for rwarp. Parked upstream in mdsumner/osgeo-upstream
+  (`notes/2026-11-05-overview-colour-interp.md`): a one-line cause in each
+  driver.
 - gdalraster's `$read()` returns nodata as `NA`. For integers that is
   -2147483648, which a warp reads as a value; the rwarp engine puts the
   nodata value back before warping.

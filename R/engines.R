@@ -103,9 +103,10 @@ engine_gdal_app <- function(req) {
        seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1))
 }
 
-## `gdal raster reproject` has no -srcalpha, and the overview dataset it opens
-## (OVERVIEW_LEVEL=k only) reports no alpha band, so it warps an alpha band as
-## data: pixels with alpha 0 keep their colour, where gdalwarp writes 0.
+## `gdal raster reproject` has no -ovr or -srcalpha; it reads the level through
+## OVERVIEW_LEVEL=k only, and for WMS/WMTS sources those overview bands report
+## no alpha band, so it warps alpha as data: pixels with alpha 0 keep their
+## colour, where gdalwarp writes 0.
 engine_gdal7_run <- function(req) {
   if (!requireNamespace("GDAL7", quietly = TRUE)) stop("GDAL7 is not installed", call. = FALSE)
   t0 <- now()

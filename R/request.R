@@ -95,10 +95,9 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
               dtype = row$dtype, type = type, nodata = row$nodata,
               crs = crs, dst_wkt = dst_wkt, extent = extent, dim = dim, dst_gt = dst_gt,
               resample = resample, bands = bands, n_overviews = row$n_overviews)
-  ## the alpha band, from the full-resolution dataset: a dataset opened at an
-  ## overview with OVERVIEW_LEVEL reports the alpha band's colour
-  ## interpretation as Undefined (GDAL 3.14), so engines that open that way
-  ## can't see it
+  ## the alpha band, from the full-resolution dataset: WMS and WMTS overview
+  ## bands report no colour interpretation (GDAL 3.14), so a tile service
+  ## opened at an overview with OVERVIEW_LEVEL has no alpha band
   if (type == "raw" && length(bands) > 1) {
     ds <- open_level(dsn, -1L)
     ci <- vapply(bands, function(b) ds$getRasterColorInterp(b), "")
