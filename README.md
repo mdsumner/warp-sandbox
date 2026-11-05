@@ -58,7 +58,7 @@ Where an sds entry points at the same file as a source.coop one (GEBCO 2024 to
 ### Rebuilding
 
 ```sh
-Rscript data-raw/build-catalogue.R     # about 2 minutes, mostly the GDAL probe
+Rscript data-raw/build-catalogue.R     # about 5 minutes (listing, metadata and the GDAL probe)
 ```
 
 This lists the bucket through its S3 API (`s3_list()`), reads each product's
