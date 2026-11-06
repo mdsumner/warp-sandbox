@@ -21,7 +21,7 @@ engines, and see each one's image, timings and differences from the first.
 | `rwarp` | [rwarp](https://github.com/hypertidy/rwarp) (Rust): `warp_plan()` + `warp_exec()`, reading with gdalraster |
 | `gdal-app` | gdalwarp as a library, `gdalraster::warp()` |
 | `gdal7-run` | `gdal raster reproject` through `GDAL7::gdal_run()` |
-| `gdal-direct` | GDAL's warp API with no utility layer: `GDALCreateGenImgProjTransformer2` + approx transformer, `GDALWarpOptions`, `GDALWarpOperation::ChunkAndWarpImage` into a MEM dataset (`inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp; a prototype for GDAL7) |
+| `gdal-direct` | GDAL's warp API with no utility layer (transformer + `GDALWarpOperation::ChunkAndWarpImage`), through `GDAL7::warp_raster()` (rgdal-dev/GDAL7, branch `warp-raster`); without that, the prototype in `inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp |
 
 A request is resolved once and every engine gets it unchanged: the same DSN,
 the same destination grid, kernel and bands, and the **same overview level**
@@ -148,7 +148,8 @@ probes each source.
 
 ## Next
 
-- move gdal-direct into GDAL7 as a binding (and let it write straight into a
-  nativeRaster: a MEM dataset over the buffer, `PIXELOFFSET=4`, `BANDOFFSET=1`)
+- GDAL7 `warp_raster(nara = TRUE)` warps straight into a nativeRaster (MEM
+  bands viewing its bytes); the page could use it for byte imagery instead of
+  packing in R
 - rwarp kernel speed (hypertidy/rwarp), lanczos first: see bench/
 - a policy for your own URLs, before it runs anywhere public

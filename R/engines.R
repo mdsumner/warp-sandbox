@@ -149,7 +149,12 @@ gdal_direct_fun <- function() {
   gdal_direct_env$f
 }
 
+has_gdal7_warp <- function() {
+  requireNamespace("GDAL7", quietly = TRUE) && "warp_raster" %in% getNamespaceExports("GDAL7")
+}
+
 engine_gdal_direct <- function(req) {
+  if (has_gdal7_warp()) return(engine_gdal_direct_gdal7(req))
   f <- gdal_direct_fun()
   t0 <- now()
   r <- f(req$dsn, level_oo(req$ovr$level), as.integer(req$bands), req$dst_wkt,
@@ -158,14 +163,34 @@ engine_gdal_direct <- function(req) {
   t1 <- now()
   a <- pack_bands(r$bands, req$dim[1], req$dim[2], req$type)
   list(data = a, nodata = r$nodata,
-       seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1))
+       seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1),
+       detail = list(backend = "inst/cpp prototype"))
+}
+
+## The same through GDAL7::warp_raster() (rgdal-dev/GDAL7 branch warp-raster),
+## which is where the prototype went.
+engine_gdal_direct_gdal7 <- function(req) {
+  t0 <- now()
+  ds <- GDAL7::gdal_open(req$dsn, options = if (req$ovr$level >= 0) level_oo(req$ovr$level) else NULL)
+  on.exit(GDAL7::gdal_close(ds))
+  ## extent as GDAL7 orders it: xmin, ymin, xmax, ymax
+  bands <- GDAL7::warp_raster(ds, req$dst_wkt, req$extent[c(1, 3, 2, 4)], size = req$dim,
+                              resample = req$resample, bands = req$bands, type = req$type,
+                              alpha_band = if (is.na(req$alpha)) 0L else req$alpha)
+  t1 <- now()
+  a <- pack_bands(bands, req$dim[1], req$dim[2], req$type)
+  b1 <- GDAL7::get_raster_band(ds, req$bands[1])
+  nd <- tryCatch(b1@nodata_value, error = function(e) NA)
+  list(data = a, nodata = if (is.null(nd) || is.na(nd)) NULL else nd,
+       seconds = c(total = now() - t0, warp = t1 - t0, read = now() - t1),
+       detail = list(backend = "GDAL7::warp_raster()"))
 }
 
 ENGINES <- list(
   "rwarp"     = list(fun = engine_rwarp, about = "rwarp (Rust): warp_plan() + warp_exec(), reading with gdalraster"),
   "gdal-app"  = list(fun = engine_gdal_app, about = "gdalwarp as a library, via gdalraster::warp()"),
   "gdal7-run" = list(fun = engine_gdal7_run, about = "GDAL's `gdal raster reproject`, via GDAL7::gdal_run()"),
-  "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (C++, prototype for GDAL7)")
+  "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (GDAL7::warp_raster(), or the inst/cpp prototype)")
 )
 
 #' The engines and whether each is available here
