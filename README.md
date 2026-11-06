@@ -40,10 +40,10 @@ Bedmap3 with nodata (average), and Esri World Imagery over WMTS (4-band, to a
 Lambert projection). On the WA tile cache (an alpha band), rwarp, gdalwarp
 and gdal-direct are identical; gdal7-run differs, see below.
 
-Timings with `cold=true` are dominated by fetching. rwarp's extra second or
-so is in `fetch` (reading through gdalraster from R, a call per band per
-chunk), not in its kernel; `/warp?format=json` splits rwarp's time into plan,
-fetch and warp.
+Speed: see [bench/README.md](bench/README.md). In short, rwarp and gdalwarp
+read the same windows with the same HTTP requests, cold timings are network
+noise, and with the data in memory rwarp's kernels are 1.5-3x slower than
+GDAL's (lanczos up to 5x), with identical output.
 
 ### Findings
 
@@ -150,6 +150,5 @@ probes each source.
 
 - move gdal-direct into GDAL7 as a binding (and let it write straight into a
   nativeRaster: a MEM dataset over the buffer, `PIXELOFFSET=4`, `BANDOFFSET=1`)
-- rwarp reading through GDAL in C++ (or GDAL7) instead of R, so its fetch
-  time is comparable
+- rwarp kernel speed (hypertidy/rwarp), lanczos first: see bench/
 - a policy for your own URLs, before it runs anywhere public
