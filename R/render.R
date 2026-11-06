@@ -75,7 +75,11 @@ as_png <- function(res, palette = "viridis", range = NULL) {
 #' @export
 compare_engines <- function(req, engines = NULL,
                             cold = TRUE, images = FALSE, palette = "viridis", range = NULL) {
-  if (is.null(engines)) { av <- warpsandbox::engines(); engines <- av$engine[av$available] }
+  if (is.null(engines)) {
+    av <- warpsandbox::engines()
+    engines <- av$engine[av$available]
+    if (!is_mosaic(req)) engines <- setdiff(engines, "gti")
+  }
   res <- lapply(engines, function(e) {
     if (cold) gdalraster::vsi_curl_clear_cache()
     tryCatch(run_engine(req, e), error = function(err) list(engine = e, error = conditionMessage(err)))

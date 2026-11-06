@@ -13,6 +13,12 @@
 
 now <- function() proc.time()[["elapsed"]]
 
+## the largest full-resolution read (source pixels) an engine is allowed
+MAX_FULL_RES_PIXELS <- 2e8
+
+## Round doubles to the nearest Float32, as writing to a Float32 band does.
+as_float32 <- function(x) readBin(writeBin(as.double(x), raw(), size = 4), "double", n = length(x), size = 4)
+
 conv_fun <- function(type) switch(type, raw = function(v) as.raw(v), integer = as.integer, double = as.double)
 
 ## A dataset's bands into the standard array, nodata as its value (not NA),
@@ -72,6 +78,9 @@ engine_rwarp <- function(req) {
                             src_nodata = nd, dst_nodata = nd,
                             mask_band = if (length(alpha)) alpha[1] else NULL)
     if (length(dim(out)) == 2) dim(out) <- c(dim(out), 1L)
+    ## GDAL writes a Float32 source to Float32; rwarp returns doubles, so round
+    ## to Float32 to compare like with like
+    if (identical(req$dtype, "Float32")) out[] <- as_float32(out)
   }
   total <- now() - t0
   list(data = out, nodata = nd,
@@ -190,6 +199,7 @@ ENGINES <- list(
   "rwarp"     = list(fun = engine_rwarp, about = "rwarp (Rust): warp_plan() + warp_exec(), reading with gdalraster"),
   "gdal-app"  = list(fun = engine_gdal_app, about = "gdalwarp as a library, via gdalraster::warp()"),
   "gdal7-run" = list(fun = engine_gdal7_run, about = "GDAL's `gdal raster reproject`, via GDAL7::gdal_run()"),
+  "gti"       = list(fun = function(req) engine_gti(req), about = "GDAL's GTI driver over an index made from a VRT mosaic's XML: each tile warped onto the grid from its own overviews (mosaics only)"),
   "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (GDAL7::warp_raster(), or the inst/cpp prototype)")
 )
 
@@ -201,7 +211,8 @@ engines <- function() {
              available = c(requireNamespace("rwarp", quietly = TRUE),
                            requireNamespace("gdalraster", quietly = TRUE),
                            requireNamespace("GDAL7", quietly = TRUE),
-                           requireNamespace("Rcpp", quietly = TRUE) && nzchar(Sys.which("gdal-config"))),
+                           TRUE,
+                           has_gdal7_warp() || (requireNamespace("Rcpp", quietly = TRUE) && nzchar(Sys.which("gdal-config")))),
              row.names = NULL, stringsAsFactors = FALSE)
 }
 
@@ -215,6 +226,19 @@ engines <- function() {
 run_engine <- function(req, engine = "rwarp") {
   e <- ENGINES[[engine]]
   if (is.null(e)) stop(sprintf("no engine '%s'; one of %s", engine, paste(names(ENGINES), collapse = ", ")), call. = FALSE)
+  ## a source with no overviews (a VRT mosaic) is read at full resolution by
+  ## every engine but gti; refuse what would be an enormous read
+  px <- req$ovr$src_pixels
+  if (engine != "gti" && !is.null(px) && !is.na(px) && px > MAX_FULL_RES_PIXELS) {
+    stop(sprintf("%s would read about %.0f million source pixels at full resolution (no overviews)%s",
+                 engine, px / 1e6, if (is_mosaic(req)) "; use gti, or a smaller extent" else "; use a smaller extent"),
+         call. = FALSE)
+  }
+  ## public data only: unsigned requests for /vsis3/ sources (REMA's PGC
+  ## tiles, reached through rema-ovr's overview VRTs)
+  old <- gdalraster::get_config_option("AWS_NO_SIGN_REQUEST")
+  gdalraster::set_config_option("AWS_NO_SIGN_REQUEST", "YES")
+  on.exit(gdalraster::set_config_option("AWS_NO_SIGN_REQUEST", old))
   r <- e$fun(req)
   r$engine <- engine
   r

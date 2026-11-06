@@ -62,6 +62,43 @@ GDAL's (lanczos up to 5x), with identical output.
   -2147483648, which a warp reads as a value; the rwarp engine puts the
   nodata value back before warping.
 
+## Mosaics: gti, and external overviews
+
+Several catalogue sources are VRT mosaics of thousands of COG tiles (COP30,
+COP90, NASADEM, SRTM15+, USGS seamless, REMA v2). Such a VRT exposes no
+overviews of its own, so a coarse view through it reads full-resolution
+tiles. Two ways round that:
+
+- **`gti`** builds a GDAL raster tile index from the VRT's XML (tile files
+  and footprints, `mosaic_tiles()`, cached; no tile is opened), keeps the
+  tiles the request needs, and opens it with the request's grid as open
+  options (`SRS` with **`SRS_BEHAVIOR=REPROJECT`**, `MINX/MINY/MAXX/MAXY`,
+  `RESX/RESY`). GTI then warps each tile onto the grid from that tile's own
+  overviews. `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` matters: without it,
+  opening each tile lists a 26,000-file directory (200 s rather than 17 s).
+  Refused above 400 tiles.
+- **External overviews**, as [mdsumner/rema-ovr](https://github.com/mdsumner/rema-ovr)
+  does for REMA: the VRT's band carries `<Overview>` elements pointing at
+  coarser mosaics and COGs, which every engine uses as ordinary overviews.
+  The catalogue's `rema_v2` is that VRT. (A GTI description accepts
+  `<Overview>` too.)
+
+What they give (2026-11-06):
+
+| request | engines on the VRT | gti |
+|---|---|---|
+| COP90, Tasmania, 560² at 800 m (no pyramid) | full resolution: rwarp 23 s, gdalwarp 31 s, 49 MB | **17 s, 2.9 MB**, from tile overviews; values differ (overviews vs a wide kernel at full resolution: median 0 m, max 1279 m) |
+| REMA v2, Antarctica, 512² (rema-ovr pyramid) | overview 4: 2-4 s, all four identical | refused: 5774 tiles |
+| REMA v2, Davis, 20 km at 512² | overview 1 (10 m): ~4-5 s, identical to 2e-6 | 5 s, from the 2 m tiles' overviews: a different answer (max 25 m) |
+
+So: gti for a regional view of a mosaic without a pyramid; a pyramid for wide
+views.
+
+The COP90 case is also the first request big enough for gdalwarp to split
+into chunks, and there it differs from rwarp by up to 2.37 m; with `-wm 4G`
+(one chunk) by 6e-5 (Float32 rounding). That is GDAL's kernel scale estimate
+ignoring the chunk's offset, parked in mdsumner/osgeo-upstream.
+
 ## Endpoints
 
 | | |

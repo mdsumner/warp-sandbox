@@ -81,3 +81,22 @@ test_that("gdal-direct compiles and matches gdalwarp on GHRSST (cubic, nodata)",
   v <- x$engines[["gdal-direct"]]$vs_reference
   expect_equal(v$identical_values, v$compared_values)
 })
+
+test_that("gti builds an index from a VRT mosaic's XML and warps from the tiles", {
+  skip_on_cran(); skip_if_offline("opentopography.s3.sdsc.edu")
+  m <- mosaic_tiles(source_dsn("cop90"))
+  expect_gt(nrow(m), 20000)
+  expect_true(all(m$xmax > m$xmin & m$ymax > m$ymin))
+  ## one degree over Tasmania: a handful of tiles
+  req <- warp_request("cop90", crs = "EPSG:4326", extent = c(146.5, 147.5, -43, -42), dim = c(64, 64))
+  r <- run_engine(req, "gti")
+  expect_equal(dim(r$data), c(64L, 64L, 1L))
+  expect_lte(r$detail$tiles, 9L)  # footprints overhang a half pixel, so edges touch neighbours
+  expect_true(any(r$data > 500, na.rm = TRUE))   # Mt Field and the Central Plateau
+})
+
+test_that("gti refuses a view that would open too many tiles", {
+  skip_on_cran(); skip_if_offline("raw.githubusercontent.com")
+  req <- warp_request("rema_v2", crs = "EPSG:3031", extent = c(-2.7e6, 2.8e6, -2.2e6, 2.3e6), dim = c(64, 64))
+  expect_error(run_engine(req, "gti"), "pyramid")
+})

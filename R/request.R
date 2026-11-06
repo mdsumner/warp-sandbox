@@ -89,7 +89,7 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
   if (!length(bands) || anyNA(bands)) stop("bands must be band numbers, e.g. 1 or 1,2,3", call. = FALSE)
   if (any(bands < 1L | bands > row$nbands)) stop(sprintf("bands must be in 1..%d", row$nbands), call. = FALSE)
 
-  req <- list(id = row$id, title = row$title, dsn = dsn, date = date,
+  req <- list(id = row$id, title = row$title, dsn = dsn, date = date, kind = row$kind,
               src_crs = src_crs, src_dim = as.integer(c(row$ncol, row$nrow)),
               src_gt = c(row$xmin, row$xres, 0, row$ymax, 0, -row$yres),
               dtype = row$dtype, type = type, nodata = row$nodata,
@@ -133,7 +133,12 @@ open_level <- function(dsn, level) {
 choose_overview <- function(req, ovr) {
   n <- req$n_overviews
   if (is.na(n)) n <- 0L
-  if (identical(ovr, "none") || n == 0) return(list(level = -1L, factor = 1, rule = if (identical(ovr, "none")) "none" else "no overviews"))
+  if (identical(ovr, "none") || n == 0) {
+    ## no overviews to choose: record what a full-resolution read would cost
+    s <- tryCatch(full_res_scale(req), error = function(e) NA_real_)
+    return(list(level = -1L, factor = 1, rule = if (identical(ovr, "none")) "none" else "no overviews",
+                scale = s, src_pixels = if (is.na(s)) NA_real_ else prod(req$dim) / s^2))
+  }
   if (!identical(ovr, "auto")) {
     k <- suppressWarnings(as.integer(ovr))
     if (is.na(k) || k < -1L || k >= n) stop(sprintf("ovr must be auto, none, or 0..%d", n - 1), call. = FALSE)
