@@ -117,13 +117,17 @@ function(query, response) {
 #* @get /compare
 #* @query engines:[string]
 #* @query cold:boolean(true)
+#* @query timing:string
 #* @query images:boolean(false)
 #* @query palette:string("viridis")
 #* @serializer unboxedJSON{digits = NA}
 function(query) {
   r <- req_from(query)
   e <- if (is.null(query$engines)) NULL else strsplit(q1(query$engines), ",", fixed = TRUE)[[1]]
-  tryCatch(compare_engines(r, e, cold = isTRUE(query$cold), images = isTRUE(query$images),
+  ## timing = cold | warm | shared (overrides cold)
+  tm <- q1(query$timing)
+  cold <- if (is.null(tm)) isTRUE(query$cold) else identical(tm, "cold")
+  tryCatch(compare_engines(r, e, cold = cold, warm = identical(tm, "warm"), images = isTRUE(query$images),
                            palette = query$palette),
            error = function(err) reqres::abort_bad_request(conditionMessage(err)))
 }

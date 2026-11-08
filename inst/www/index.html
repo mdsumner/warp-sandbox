@@ -92,7 +92,11 @@
 
   <label>Engines <span class="hint">(the first ticked is the reference)</span></label>
   <div class="checks" id="engines"></div>
-  <label class="checks"><input type="checkbox" id="cold" checked> clear the HTTP cache before each engine</label>
+  <label for="timing">Timing</label>
+  <select id="timing">
+    <option value="cold" selected>cold: clear the HTTP cache before each engine (mostly network)</option>
+    <option value="warm">warm: each engine's reads cached, median of 3 (plan + kernel)</option>
+  </select>
 
   <button id="go" type="submit">Warp and compare</button>
 </form>
@@ -197,7 +201,7 @@ async function run(ev) {
   const p = new URLSearchParams({
     source: $("source").value, crs: $("crs").value, extent: $("extent").value, dim: $("dim").value,
     resample: $("resample").value, ovr: $("ovr").value, palette: $("palette").value,
-    engines: engines.join(","), cold: $("cold").checked, images: true });
+    engines: engines.join(","), timing: $("timing").value, images: true });
   if (!$("date").disabled && $("date").value) p.set("date", $("date").value);
   if ($("vrt").value.trim()) p.set("vrt", $("vrt").value.trim());
   $("go").disabled = true; $("status").className = ""; $("status").textContent = "Warping…"; $("cards").innerHTML = "";
@@ -206,7 +210,7 @@ async function run(ev) {
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || j.title || r.statusText);
     render(j);
-    $("status").textContent = `Done. Reference: ${j.reference}.`;
+    $("status").textContent = `Done. Reference: ${j.reference}. Timing ${j.timing}.`;
   } catch (e) {
     $("status").className = "error"; $("status").textContent = "Error: " + e.message;
   } finally { $("go").disabled = false; }

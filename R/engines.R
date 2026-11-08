@@ -47,6 +47,7 @@ engine_rwarp <- function(req) {
   g <- level_grid(req)
   ds <- open_level(req$dsn, req$ovr$level)
   on.exit(ds$close())
+  t_open <- now() - t0
   conv <- conv_fun(req$type)
   fetch <- 0
   ## gdalraster's $read() gives nodata as NA; put the nodata value back, so
@@ -84,7 +85,8 @@ engine_rwarp <- function(req) {
   }
   total <- now() - t0
   list(data = out, nodata = nd,
-       seconds = c(total = total, plan = t_plan, fetch = fetch, warp = total - t_plan - fetch),
+       seconds = c(total = total, open = t_open, plan = t_plan, fetch = fetch,
+                   warp = total - t_open - t_plan - fetch),
        detail = list(chunks = if (is.null(plan)) 0L else length(plan[[1]]),
                      scale = if (is.null(plan)) NA else plan[[1]][[1]]$scale_x))
 }

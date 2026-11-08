@@ -67,8 +67,15 @@ as_png <- function(res, palette = "viridis", range = NULL) {
 #' @param req A request from [warp_request()].
 #' @param engines Engine names; the first is the reference. Default: every
 #'   available engine, rwarp first.
-#' @param cold Clear GDAL's HTTP cache before each engine, so the timings are
+#' @param cold Clear GDAL's HTTP cache before each engine, and turn off the
+#'   WMS/WMTS disk cache (~/.cache/gdalwmscache), so the timings are
 #'   comparable (otherwise later engines reuse what earlier ones fetched).
+#'   Ignored when `warm` is `TRUE`.
+#' @param warm Time each engine with its own reads already cached: one
+#'   untimed run, then `warm_runs` timed runs, reporting the median of each
+#'   timing. That leaves out the network, so it shows the plan and kernel
+#'   costs (cold timings are mostly network).
+#' @param warm_runs Timed runs per engine when `warm`.
 #' @param images Also return each engine's PNG (and a difference image) as
 #'   data URIs.
 #' @param palette,range For the images.
@@ -76,16 +83,37 @@ as_png <- function(res, palette = "viridis", range = NULL) {
 #'   differences from the reference.
 #' @export
 compare_engines <- function(req, engines = NULL,
-                            cold = TRUE, images = FALSE, palette = "viridis", range = NULL) {
+                            cold = TRUE, warm = FALSE, warm_runs = 3L,
+                            images = FALSE, palette = "viridis", range = NULL) {
   if (is.null(engines)) {
     av <- warpsandbox::engines()
     engines <- av$engine[av$available]
     if (!is_mosaic(req)) engines <- setdiff(engines, "gti")
     if (req$type != "raw") engines <- setdiff(engines, "gdal7-nara")
   }
+  ## Cold also means no WMS/WMTS disk cache: tile sources with <Cache/> keep
+  ## their tiles in ~/.cache/gdalwmscache across runs and processes, which
+  ## vsi_curl_clear_cache() doesn't touch. Warm keeps it: that's their cache.
+  if (cold && !warm) {
+    old_wms <- gdalraster::get_config_option("GDAL_ENABLE_WMS_CACHE")
+    gdalraster::set_config_option("GDAL_ENABLE_WMS_CACHE", "NO")
+    on.exit(gdalraster::set_config_option("GDAL_ENABLE_WMS_CACHE", old_wms), add = TRUE)
+  }
+  one <- function(e) tryCatch(run_engine(req, e), error = function(err) list(engine = e, error = conditionMessage(err)))
   res <- lapply(engines, function(e) {
-    if (cold) gdalraster::vsi_curl_clear_cache()
-    tryCatch(run_engine(req, e), error = function(err) list(engine = e, error = conditionMessage(err)))
+    if (!warm) {
+      if (cold) gdalraster::vsi_curl_clear_cache()
+      return(one(e))
+    }
+    ## each engine fills the cache for itself right before it is timed, so one
+    ## engine's reads can't evict another's
+    r <- one(e)
+    if (!is.null(r$error)) return(r)
+    runs <- lapply(seq_len(warm_runs), function(i) one(e))
+    if (any(vapply(runs, function(x) !is.null(x$error), TRUE))) return(runs[[1]])
+    r <- runs[[warm_runs]]
+    r$seconds <- apply(do.call(rbind, lapply(runs, `[[`, "seconds")), 2, stats::median)
+    r
   })
   names(res) <- engines
   ref <- res[[1]]
@@ -96,7 +124,10 @@ compare_engines <- function(req, engines = NULL,
     v <- ref$data[, , 1]; if (is.raw(v)) v <- as.integer(v)
     if (any(ok)) range <- base::range(as.numeric(v)[ok])
   }
-  out <- list(request = request_summary(req), reference = engines[1], engines = list())
+  out <- list(request = request_summary(req), reference = engines[1],
+              timing = if (warm) sprintf("warm: median of %d runs after one untimed run", warm_runs)
+                       else if (cold) "cold: HTTP cache cleared before each engine" else "shared cache, in engine order",
+              engines = list())
   for (e in engines) {
     r <- res[[e]]
     about <- ENGINES[[e]]$about
