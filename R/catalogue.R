@@ -281,6 +281,72 @@ fill_template <- function(template, date) {
   gsub("{DD}", format(date, "%d"), s, fixed = TRUE)
 }
 
+## mosaic and pyramid flags ---------------------------------------------------
+
+## A VRT's XML: inline, a /vsicurl/ URL (one download), or a local path;
+## NULL for anything that isn't a VRT.
+vrt_xml <- function(dsn, kind) {
+  if (is.na(dsn)) return(NULL)
+  if (grepl("^\\s*<VRTDataset", dsn)) return(dsn)
+  if (!kind %in% c("vrt_url", "vrt_file") || !grepl("\\.vrt$", dsn)) return(NULL)
+  src <- sub("^/vsicurl/", "", dsn)
+  tryCatch(paste(readLines(src, warn = FALSE), collapse = "\n"), error = function(e) NULL)
+}
+
+## Sources in the first band of a VRT (bands repeat them).
+vrt_n_sources <- function(xml) {
+  band <- strsplit(xml, "</VRTRasterBand>", fixed = TRUE)[[1]][1]
+  m <- gregexpr("<(Simple|Complex|Averaged|Kernel)Source[ >]", band)[[1]]
+  sum(m > 0)
+}
+
+#' Add mosaic and pyramid flags to a probed catalogue
+#'
+#' How a source serves a coarse view, which decides what a wide request
+#' costs and which engines suit it:
+#' - `mosaic`, `n_tiles`: a VRT of more than one source (counted in its first
+#'   band). The gti engine applies to these.
+#' - `pyramid`: `"internal"` (the source's own overviews, as in a COG),
+#'   `"external"` (a VRT whose band carries `<Overview>` elements, as
+#'   mdsumner/rema-ovr does for REMA), `"tiles"` (a tile service's zoom
+#'   levels) or `"none"` (no overviews: every view reads full resolution;
+#'   for a mosaic, use gti).
+#' - `coarsest_factor`: full-resolution width over the coarsest overview's
+#'   width (1 with no overviews).
+#'
+#' @param cat A catalogue from [catalogue_probe()].
+#' @return `cat` with those columns.
+#' @export
+catalogue_flags <- function(cat) {
+  gdalraster::set_config_option("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
+  res <- lapply(seq_len(nrow(cat)), function(i) {
+    out <- list(mosaic = NA, n_tiles = NA_integer_, pyramid = NA_character_, coarsest_factor = NA_real_)
+    if (!isTRUE(cat$probe_ok[i])) return(out)
+    message(sprintf("[%d/%d] %s", i, nrow(cat), cat$id[i]))
+    d <- cat$dsn[i]
+    if (is.na(d) && !is.na(cat$dsn_template[i])) {
+      d <- fill_template(cat$dsn_template[i], if (!is.na(cat$probe_date[i])) cat$probe_date[i] else cat$time_end[i])
+    }
+    xml <- vrt_xml(d, cat$kind[i])
+    out$n_tiles <- if (is.null(xml)) NA_integer_ else vrt_n_sources(xml)
+    out$mosaic <- !is.na(out$n_tiles) && out$n_tiles > 1
+    nov <- cat$n_overviews[i]
+    out$pyramid <- if (is.na(nov) || nov == 0) "none"
+      else if (cat$kind[i] %in% c("wmts", "xml_file")) "tiles"
+      else if (!is.null(xml) && grepl("<Overview>", xml, fixed = TRUE)) "external"
+      else "internal"
+    out$coarsest_factor <- if (is.na(nov) || nov == 0) 1 else tryCatch({
+      ds <- open_level(d, nov - 1L); on.exit(ds$close())
+      signif(cat$ncol[i] / ds$getRasterXSize(), 4)
+    }, error = function(e) NA_real_)
+    out
+  })
+  for (cl in c("mosaic", "n_tiles", "pyramid", "coarsest_factor")) {
+    cat[[cl]] <- unlist(lapply(res, `[[`, cl))
+  }
+  cat
+}
+
 ## read and write -----------------------------------------------------------
 
 #' Write the catalogue as JSON and CSV (and the GHRSST date index)

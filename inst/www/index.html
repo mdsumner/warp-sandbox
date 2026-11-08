@@ -169,7 +169,16 @@ function showSourceInfo() {
   const dated = !!s.dsn_template;
   $("date").disabled = !dated;
   if (dated) { $("date").min = s.time_start; $("date").max = s.time_end; if (!$("date").value) $("date").value = s.time_end; }
-  $("source-info").textContent = `${s.ncol.toLocaleString()} × ${s.nrow.toLocaleString()} ${s.dtype}, ${s.nbands} band(s), ${s.crs}, ${s.n_overviews} overviews` + (dated ? `; ${s.time_start} to ${s.time_end}` : "");
+  const pyr = {
+    internal: `${s.n_overviews} overviews (down to 1/${fmt(s.coarsest_factor)})`,
+    external: `external overview pyramid, ${s.n_overviews} levels (down to 1/${fmt(s.coarsest_factor)})`,
+    tiles: `tile service, ${s.n_overviews} zoom levels`,
+    none: "no overviews: every view reads full resolution",
+  }[s.pyramid] ?? `${s.n_overviews} overviews`;
+  const mos = s.mosaic ? `mosaic of ${Number(s.n_tiles).toLocaleString()} tiles; ` : "";
+  const hint = s.mosaic && s.pyramid === "none" ? ". For a wide view use gti (each tile's own overviews), or a small extent" : "";
+  $("source-info").textContent = `${s.ncol.toLocaleString()} × ${s.nrow.toLocaleString()} ${s.dtype}, ${s.nbands} band(s), ${s.crs}; ${mos}${pyr}` +
+    (dated ? `; ${s.time_start} to ${s.time_end}` : "") + hint;
 }
 
 async function init() {

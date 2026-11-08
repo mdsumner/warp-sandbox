@@ -127,7 +127,10 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
               src_gt = c(row$xmin, row$xres, 0, row$ymax, 0, -row$yres),
               dtype = row$dtype, type = type, nodata = row$nodata,
               crs = crs, dst_wkt = dst_wkt, extent = extent, dim = dim, dst_gt = dst_gt,
-              resample = resample, bands = bands, n_overviews = row$n_overviews)
+              resample = resample, bands = bands, n_overviews = row$n_overviews,
+              ## catalogue flags (catalogue_flags()); through vrt:// it's no longer the mosaic
+              mosaic = isTRUE(row$mosaic) && is.null(vrt),
+              pyramid = if (is.null(row$pyramid)) NA_character_ else row$pyramid)
   ## the alpha band, from the full-resolution dataset: WMS and WMTS overview
   ## bands report no colour interpretation (GDAL 3.14), so a tile service
   ## opened at an overview with OVERVIEW_LEVEL has no alpha band

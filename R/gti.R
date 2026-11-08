@@ -154,6 +154,11 @@ engine_gti <- function(req) {
        detail = list(tiles = attr(path, "tiles"), of = nrow(tiles)))
 }
 
+## A VRT mosaic gti can index: the catalogue's flag (catalogue_flags()), and a
+## VRT URL (mosaic_tiles() downloads the XML). Without the flag (an older
+## catalogue), the kind and the URL decide.
 is_mosaic <- function(req) {
-  grepl("^/vsicurl/https?://.*\\.vrt$", req$dsn) && identical(req$kind, "vrt_url")
+  url <- grepl("^/vsicurl/https?://.*\\.vrt$", req$dsn)
+  if (!is.null(req$mosaic)) return(isTRUE(req$mosaic) && url)
+  url && identical(req$kind, "vrt_url")
 }

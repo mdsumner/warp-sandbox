@@ -191,6 +191,21 @@ Each row has:
   opening the source): `ncol`, `nrow`, `nbands`, `dtype`, extent and
   resolution, `n_overviews`, `block`, `nodata`, `scale`, `offset`, `crs`,
   `crs_wkt`, plus `probe_ok`, `probe_error` and `probe_seconds`
+- **how a coarse view is served** (`catalogue_flags()`): `mosaic` and
+  `n_tiles` (a VRT of more than one source), `pyramid` and `coarsest_factor`
+  (full-resolution width over the coarsest overview's)
+
+| `pyramid` | sources | meaning |
+|---|---|---|
+| `internal` | 43 | the source's own overviews (COGs; GEBCO 2025 down to 1/128) |
+| `tiles` | 53 | a tile service's zoom levels (WMTS, GDAL WMS/TMS) |
+| `external` | 1 | a VRT whose band has `<Overview>` elements: `rema_v2`, 5,800 tiles, down to 1/500 ([mdsumner/rema-ovr](https://github.com/mdsumner/rema-ovr)) |
+| `none` | 5 | no overviews, so every view reads full resolution: COP30, COP90 (26,475 tiles each), NASADEM, USGS seamless, SRTM15+. For a wide view use gti, or keep the extent small |
+
+The sandbox uses `mosaic` to decide when gti applies (a mosaic given as a VRT
+URL; not through `vrt://`), and the page shows the pyramid under the source.
+`Rscript data-raw/add-flags.R` adds the flags to the existing catalogue;
+`build-catalogue.R` includes them.
 
 Dated sources are one row per variable, not one per day. The days, and each
 day's status (`final`, `preliminary`, `nrt_only`), are in
