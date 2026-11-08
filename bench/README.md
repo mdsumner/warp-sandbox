@@ -81,16 +81,24 @@ per engine (GDAL's network statistics, fresh process each), cold and warm.
 
 After the dateline split (hypertidy/rwarp#57), the Pacific case reads 6x fewer
 bytes but was not faster cold: `warp_exec()` calls `read_fn` once per chunk,
-in turn, and GDAL reads a window's tile rows one after another, so 4 windows
-made 5 sequential requests. To source.coop each request costs 0.4-0.75 s before
+in turn, so the windows' requests queue (plus the tile-offset table, fetched
+before the first tiles). To source.coop each request costs 0.4-0.75 s before
 the first byte (Cloudflare to a distant origin) at about 5 MB/s.
+
+Correction (checked against the local server and GDAL's source): within one
+RasterIO, GTiff over `/vsicurl/` already fetches the window's tiles in
+parallel (`CacheMultiRange()`, `GDAL_HTTP_MULTIRANGE=PARALLEL`); two tile rows
+came back in one round trip. An earlier version of this section said GDAL read
+them one after another; that was latency noise plus the offset-table fetch. The
+sequential part is across calls.
 
 Tried, cold (`batch-fetch-probe.R`): one VRT over all the windows, GDAL7
 `advise_read()` per window, `GDAL_NUM_THREADS`, forked readers: none reliably
-better (GDAL did not issue parallel or multi-range requests for these reads).
-What works: `inst/cpp/read_windows.cpp` splits every window at its tile rows
-and reads each piece on its own thread with its own dataset handle, sharing
-GDAL's HTTP cache. The rwarp engine fetches all of a plan's windows this way
+better. `advise_read()` can't help: GTiff doesn't implement `AdviseRead()`
+(the `GDALRasterBand` default does nothing). The forks each fetched the
+offset table again. What works: `inst/cpp/read_windows.cpp` reads every
+window (split at tile rows, to spread the work) on its own thread with its own
+dataset handle, sharing GDAL's HTTP cache, so the windows overlap. The rwarp engine fetches all of a plan's windows this way
 before `warp_exec()` (`options(warpsandbox.prefetch = FALSE)` turns it off);
 same values.
 

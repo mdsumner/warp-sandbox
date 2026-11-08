@@ -51,7 +51,11 @@ and gdal-direct are identical; gdal7-run differs, see below.
 Speed: see [bench/README.md](bench/README.md). In short, rwarp and gdalwarp
 read the same windows with the same HTTP requests, cold timings are network
 noise, and with the data in memory rwarp's kernels are 1.5-3x slower than
-GDAL's (lanczos up to 5x), with identical output.
+GDAL's (lanczos up to 5x), with identical output. The exception is a target
+across the antimeridian: gdalwarp reads a full-width strip, and rwarp (since
+hypertidy/rwarp#57) reads the two edges, with the chunks' windows fetched at
+once: 1.35 s against 3.06 s at 0.4 s per request and 5 MB/s. Drafts of the
+upstream reports are in [notes/](notes/).
 
 ### Findings
 
