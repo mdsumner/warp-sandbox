@@ -24,6 +24,21 @@ r_type <- function(dtype) {
   else "double"
 }
 
+## vrt:// options a request may add to a catalogue source: they change how the
+## source is read (type, scaling, band order), never which file is opened.
+VRT_KEYS <- "^(bands|ot|scale(_[0-9]+)?|exponent(_[0-9]+)?|unscale|a_nodata|expand)$"
+
+## "ot=Byte&scale=-8000,0,0,255&bands=1,1,1" -> checked and normalised, or an error.
+check_vrt <- function(vrt) {
+  kv <- strsplit(strsplit(vrt, "&", fixed = TRUE)[[1]], "=", fixed = TRUE)
+  ok <- vapply(kv, function(p) length(p) == 2 && grepl(VRT_KEYS, p[1]) && grepl("^[A-Za-z0-9.,_+-]+$", p[2]), TRUE)
+  if (!length(kv) || !all(ok)) {
+    stop("vrt must be key=value pairs joined by &, keys among bands, ot, scale[_N], exponent[_N], unscale, a_nodata, expand",
+         call. = FALSE)
+  }
+  paste(vapply(kv, paste, "", collapse = "="), collapse = "&")
+}
+
 #' Resolve a warp request
 #'
 #' @param source A catalogue id (or an sds alias).
@@ -39,12 +54,16 @@ r_type <- function(dtype) {
 #' @param ovr Overview level: `"auto"` (the coarsest overview that is still at
 #'   least as fine as the destination; the same level is used by every
 #'   engine), `"none"` (full resolution) or a 0-based level.
+#' @param vrt [vrt://](https://gdal.org/drivers/raster/vrt.html#vrt-connection-string)
+#'   options to read the source through, e.g. `"ot=Byte&scale=-8000,0,0,255"`
+#'   (a grey Byte image, for `gdal7-nara`). Only options that change how the
+#'   source is read are allowed; the overviews carry through.
 #' @param cat The catalogue.
 #' @return A list with the resolved request.
 #' @export
 warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = NULL,
                          dim = c(512L, 512L), resample = "near", bands = NULL,
-                         ovr = "auto", cat = catalogue()) {
+                         ovr = "auto", vrt = NULL, cat = catalogue()) {
   if (is.null(source) || !nzchar(source)) stop("source is required", call. = FALSE)
   i <- match(source, cat$id)
   if (is.na(i)) {
@@ -55,6 +74,20 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
   row <- cat[i, ]
   if (!isTRUE(row$probe_ok)) stop(sprintf("source '%s' did not open when the catalogue was probed", row$id), call. = FALSE)
   dsn <- source_dsn(row$id, date = date, cat = cat)
+  if (!is.null(vrt) && nzchar(vrt)) {
+    vrt <- check_vrt(vrt)
+    if (startsWith(dsn, "<") || grepl("?", dsn, fixed = TRUE)) {
+      stop(sprintf("source '%s' can't be read through vrt:// (inline XML, or a DSN with its own query)", row$id), call. = FALSE)
+    }
+    dsn <- paste0("vrt://", dsn, "?", vrt)
+    ## the wrapped dataset's type, bands, nodata and overviews replace the catalogue's
+    ds <- tryCatch(open_level(dsn, -1L), error = function(e) stop(sprintf("vrt://%s?%s did not open", row$id, vrt), call. = FALSE))
+    row$dtype <- ds$getDataTypeName(1); row$nbands <- ds$getRasterCount()
+    row$nodata <- ds$getNoDataValue(1); row$n_overviews <- ds$getOverviewCount(1)
+    ds$close()
+  } else {
+    vrt <- NULL
+  }
 
   resample <- match.arg(resample, RESAMPLE)
   dim <- as.integer(parse_num(dim, 2, "dim"))
@@ -89,7 +122,7 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
   if (!length(bands) || anyNA(bands)) stop("bands must be band numbers, e.g. 1 or 1,2,3", call. = FALSE)
   if (any(bands < 1L | bands > row$nbands)) stop(sprintf("bands must be in 1..%d", row$nbands), call. = FALSE)
 
-  req <- list(id = row$id, title = row$title, dsn = dsn, date = date, kind = row$kind,
+  req <- list(id = row$id, title = row$title, dsn = dsn, date = date, kind = row$kind, vrt = vrt,
               src_crs = src_crs, src_dim = as.integer(c(row$ncol, row$nrow)),
               src_gt = c(row$xmin, row$xres, 0, row$ymax, 0, -row$yres),
               dtype = row$dtype, type = type, nodata = row$nodata,

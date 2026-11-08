@@ -54,6 +54,10 @@
   <select id="source" name="source"></select>
   <div class="hint" id="source-info"></div>
 
+  <label for="vrt">Read through vrt:// <span class="hint">(optional)</span></label>
+  <input id="vrt" name="vrt" placeholder="ot=Byte&scale=-8000,0,0,255">
+  <div class="hint">bands, ot, scale[_N], exponent, unscale, a_nodata, expand. Byte output can go to gdal7-nara.</div>
+
   <label for="date">Date <span class="hint">(dated sources only)</span></label>
   <input id="date" name="date" type="date">
 
@@ -108,6 +112,9 @@ let sources = [];
 const TRY = [
   { label: "GEBCO 2025 around Antarctica", note: "Int16 bathymetry from a global lon/lat COG: every array engine should agree.",
     source: "ausantarctic/gebco/GEBCO_2025", crs: "EPSG:3031", extent: "-4e6,4e6,-4e6,4e6", dim: "384,384", resample: "bilinear" },
+  { label: "GEBCO as grey through vrt://, straight to a nativeRaster", note: "vrt://…?ot=Byte&scale=-8000,0,0,255 turns Int16 depth into a grey Byte image, overviews and all, so gdal7-nara can take it. Land is clipped to white.",
+    source: "ausantarctic/gebco/GEBCO_2025", vrt: "ot=Byte&scale=-8000,0,0,255", crs: "EPSG:3031", extent: "-4e6,4e6,-4e6,4e6", dim: "384,384", resample: "bilinear",
+    engines: ["gdal-direct", "gdal7-nara", "rwarp", "gdal-app"] },
   { label: "Blue Marble, polar, straight to a nativeRaster", note: "RGBA imagery: gdal7-nara is GDAL's own picture, compared value by value with gdal-direct (the same warp as bands) and rwarp.",
     source: "nasa_blue_marble", crs: "EPSG:3031", extent: "-4e6,4e6,-4e6,4e6", dim: "384,384", resample: "bilinear",
     engines: ["gdal-direct", "gdal7-nara", "rwarp", "gdal-app"] },
@@ -127,7 +134,7 @@ const TRY = [
 function applyTry() {
   const t = TRY[$("try").value];
   if (!t) { $("try-info").textContent = ""; return; }
-  $("source").value = t.source; $("date").value = ""; showSourceInfo();
+  $("source").value = t.source; $("date").value = ""; $("vrt").value = t.vrt || ""; showSourceInfo();
   $("crs").value = t.crs; $("extent").value = t.extent; $("preset").value = "";
   $("dim").value = t.dim; $("resample").value = t.resample; $("ovr").value = "auto";
   if (t.engines) for (const i of $("engines").querySelectorAll("input")) i.checked = !i.disabled && t.engines.includes(i.value);
@@ -192,6 +199,7 @@ async function run(ev) {
     resample: $("resample").value, ovr: $("ovr").value, palette: $("palette").value,
     engines: engines.join(","), cold: $("cold").checked, images: true });
   if (!$("date").disabled && $("date").value) p.set("date", $("date").value);
+  if ($("vrt").value.trim()) p.set("vrt", $("vrt").value.trim());
   $("go").disabled = true; $("status").className = ""; $("status").textContent = "Warping…"; $("cards").innerHTML = "";
   try {
     const r = await fetch("compare?" + p.toString());
@@ -206,7 +214,7 @@ async function run(ev) {
 
 function render(j) {
   const q = j.request, o = q.overview;
-  $("summary").textContent = `${q.source} → ${q.crs}, ${q.dim.join(" × ")} px, ${q.resample}, bands ${[].concat(q.bands).join(",")}, read at ` +
+  $("summary").textContent = `${q.source}${typeof q.vrt === "string" ? ` (vrt://…?${q.vrt})` : ""} → ${q.crs}, ${q.dim.join(" × ")} px, ${q.resample}, bands ${[].concat(q.bands).join(",")}, read at ` +
     (o.level < 0 ? "full resolution" : `overview ${o.level} (1/${fmt(o.factor)})`) + ` [${o.rule}]`;
   for (const [name, e] of Object.entries(j.engines)) {
     const c = document.createElement("div"); c.className = "card";

@@ -9,6 +9,8 @@
 ##   resample  near bilinear cubic cubicspline lanczos average mode min max med rms
 ##   bands     e.g. 1 or 1,2,3                                    default by type
 ##   ovr       auto | none | 0-based overview level               default auto
+##   vrt       vrt:// options to read the source through, URL-encoded, e.g.
+##             vrt=ot%3DByte%26scale%3D-8000%2C0%2C0%2C255 (bands, ot, scale, ...)
 
 library(warpsandbox)
 
@@ -20,7 +22,7 @@ req_from <- function(query) {
     warp_request(source = q1(query$source), date = q1(query$date), crs = q1(query$crs),
                  extent = q1(query$extent), bbox = q1(query$bbox),
                  dim = q1(query$dim) %||% "512,512", resample = q1(query$resample) %||% "near",
-                 bands = q1(query$bands), ovr = q1(query$ovr) %||% "auto"),
+                 bands = q1(query$bands), ovr = q1(query$ovr) %||% "auto", vrt = q1(query$vrt)),
     error = function(e) reqres::abort_bad_request(conditionMessage(e)))
 }
 

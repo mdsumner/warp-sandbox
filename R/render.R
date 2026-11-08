@@ -155,7 +155,7 @@ diff_png <- function(ref, r) {
 data_uri <- function(png) paste0("data:image/png;base64,", jsonlite::base64_enc(png))
 
 request_summary <- function(req) {
-  list(source = req$id, title = req$title, date = req$date, dsn = if (startsWith(req$dsn, "<")) "(inline GDAL XML)" else req$dsn,
+  list(source = req$id, title = req$title, date = req$date, vrt = req$vrt, dsn = if (startsWith(req$dsn, "<")) "(inline GDAL XML)" else req$dsn,
        crs = req$crs, extent = req$extent, dim = req$dim, resample = req$resample,
        bands = req$bands, type = req$type, overview = req$ovr)
 }

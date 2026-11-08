@@ -122,6 +122,7 @@ gti_index <- function(tiles, extent_src, resample) {
 }
 
 engine_gti <- function(req) {
+  if (!is_mosaic(req)) stop("gti is for VRT mosaics only (and not through a vrt:// wrapper)", call. = FALSE)
   t0 <- now()
   tiles <- mosaic_tiles(req$dsn)
   t_tiles <- now() - t0

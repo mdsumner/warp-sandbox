@@ -25,6 +25,12 @@ one's image, timings, details and differences from the first.
 | `gdal-direct` | GDAL's warp API with no utility layer (transformer + `GDALWarpOperation::ChunkAndWarpImage`), through `GDAL7::warp_raster()` (rgdal-dev/GDAL7); without that, the prototype in `inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp |
 | `gdal7-nara` | `GDAL7::warp_raster(nara = TRUE)`: GDAL warps into four Byte bands and one interleaved read gives the nativeRaster, shown as is with nothing packed in R. Byte imagery only (grey, RGB, RGBA); unpacked to bands only for the comparison. Identical to `gdal-direct` on Blue Marble, Esri imagery and the WA basemap |
 
+Any source can be read through [`vrt://`](https://gdal.org/drivers/raster/vrt.html#vrt-connection-string)
+options (`vrt=` in the API, a field on the page), limited to ones that change how it is read: `bands`,
+`ot`, `scale[_N]`, `exponent[_N]`, `unscale`, `a_nodata`, `expand`. The overviews carry through. For
+example GEBCO with `ot=Byte&scale=-8000,0,0,255` is a grey Byte image that `gdal7-nara` can take; all
+four engines give identical values on it.
+
 A request is resolved once and every engine gets it unchanged: the same DSN,
 the same destination grid, kernel and bands, and the **same overview level**
 (`ovr=auto` picks the coarsest overview that is still at least as fine as the
