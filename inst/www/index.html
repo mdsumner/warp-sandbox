@@ -214,7 +214,7 @@ async function run(ev) {
 
 function render(j) {
   const q = j.request, o = q.overview;
-  $("summary").textContent = `${q.source}${typeof q.vrt === "string" ? ` (vrt://…?${q.vrt})` : ""} → ${q.crs}, ${q.dim.join(" × ")} px, ${q.resample}, bands ${[].concat(q.bands).join(",")}, read at ` +
+  $("summary").textContent = `${q.source}${typeof q.vrt === "string" ? ` as ${q.dsn}` : ""} → ${q.crs}, ${q.dim.join(" × ")} px, ${q.resample}, bands ${[].concat(q.bands).join(",")}, read at ` +
     (o.level < 0 ? "full resolution" : `overview ${o.level} (1/${fmt(o.factor)})`) + ` [${o.rule}]`;
   for (const [name, e] of Object.entries(j.engines)) {
     const c = document.createElement("div"); c.className = "card";

@@ -81,7 +81,7 @@ warp_request <- function(source, date = NULL, crs = NULL, extent = NULL, bbox = 
     }
     dsn <- paste0("vrt://", dsn, "?", vrt)
     ## the wrapped dataset's type, bands, nodata and overviews replace the catalogue's
-    ds <- tryCatch(open_level(dsn, -1L), error = function(e) stop(sprintf("vrt://%s?%s did not open", row$id, vrt), call. = FALSE))
+    ds <- tryCatch(open_level(dsn, -1L), error = function(e) stop(sprintf("%s did not open", dsn), call. = FALSE))
     row$dtype <- ds$getDataTypeName(1); row$nbands <- ds$getRasterCount()
     row$nodata <- ds$getNoDataValue(1); row$n_overviews <- ds$getOverviewCount(1)
     ds$close()
