@@ -11,8 +11,9 @@ Rscript -e 'warpsandbox::sandbox_run()'          # 127.0.0.1:8090; under tmux on
 ssh -L 8090:localhost:8090 <server>              # from your machine
 ```
 
-then open <http://localhost:8090/>: pick a source and a destination, tick
-engines, and see each one's image, timings and differences from the first.
+then open <http://localhost:8090/>: pick a source and a destination (or one of
+the "Try these" examples, which fill the whole form), tick engines, and see each
+one's image, timings, details and differences from the first.
 
 ## Engines
 
@@ -21,7 +22,8 @@ engines, and see each one's image, timings and differences from the first.
 | `rwarp` | [rwarp](https://github.com/hypertidy/rwarp) (Rust): `warp_plan()` + `warp_exec()`, reading with gdalraster |
 | `gdal-app` | gdalwarp as a library, `gdalraster::warp()` |
 | `gdal7-run` | `gdal raster reproject` through `GDAL7::gdal_run()` |
-| `gdal-direct` | GDAL's warp API with no utility layer (transformer + `GDALWarpOperation::ChunkAndWarpImage`), through `GDAL7::warp_raster()` (rgdal-dev/GDAL7, branch `warp-raster`); without that, the prototype in `inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp |
+| `gdal-direct` | GDAL's warp API with no utility layer (transformer + `GDALWarpOperation::ChunkAndWarpImage`), through `GDAL7::warp_raster()` (rgdal-dev/GDAL7); without that, the prototype in `inst/cpp/gdal_direct.cpp`, compiled on first use with Rcpp |
+| `gdal7-nara` | `GDAL7::warp_raster(nara = TRUE)`: GDAL warps into four Byte bands and one interleaved read gives the nativeRaster, shown as is with nothing packed in R. Byte imagery only (grey, RGB, RGBA); unpacked to bands only for the comparison. Identical to `gdal-direct` on Blue Marble, Esri imagery and the WA basemap |
 
 A request is resolved once and every engine gets it unchanged: the same DSN,
 the same destination grid, kernel and bands, and the **same overview level**

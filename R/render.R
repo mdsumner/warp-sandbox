@@ -28,6 +28,8 @@ pack_nara <- function(r, g, b, alpha) {
 #' @param range Value range for the ramp; default the data's range.
 #' @export
 as_nara <- function(res, palette = "viridis", range = NULL) {
+  ## an engine that made its own nativeRaster (gdal7-nara): show it as is
+  if (inherits(res$nara, "nativeRaster")) return(res$nara)
   a <- res$data
   nb <- dim(a)[3]
   if (is.raw(a) && nb >= 3) {
@@ -79,6 +81,7 @@ compare_engines <- function(req, engines = NULL,
     av <- warpsandbox::engines()
     engines <- av$engine[av$available]
     if (!is_mosaic(req)) engines <- setdiff(engines, "gti")
+    if (req$type != "raw") engines <- setdiff(engines, "gdal7-nara")
   }
   res <- lapply(engines, function(e) {
     if (cold) gdalraster::vsi_curl_clear_cache()
@@ -96,11 +99,13 @@ compare_engines <- function(req, engines = NULL,
   out <- list(request = request_summary(req), reference = engines[1], engines = list())
   for (e in engines) {
     r <- res[[e]]
+    about <- ENGINES[[e]]$about
     if (!is.null(r$error)) {
-      out$engines[[e]] <- list(error = r$error)
+      out$engines[[e]] <- list(about = about, error = r$error)
       next
     }
-    entry <- list(seconds = as.list(round(r$seconds, 4)))
+    entry <- list(about = about, seconds = as.list(round(r$seconds, 4)))
+    if (length(r$detail)) entry$detail <- lapply(r$detail, function(x) if (is.numeric(x)) signif(x, 6) else x)
     if (e != engines[1]) entry$vs_reference <- diff_stats(ref, r)
     if (images) {
       entry$png <- data_uri(as_png(r, palette, range))

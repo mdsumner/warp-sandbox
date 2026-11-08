@@ -29,6 +29,7 @@
   .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: .75rem; }
   .card h2 { font-size: 1rem; margin: 0 0 .5rem; }
   .card h2 small { color: var(--muted); font-weight: 400; }
+  .card .about { color: var(--muted); font-size: .8rem; margin: -.3rem 0 .5rem; }
   .card img { width: 100%; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px;
     background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
   table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .5rem; }
@@ -45,6 +46,10 @@
 </header>
 <main>
 <form id="f">
+  <label for="try">Try these</label>
+  <select id="try"><option value="">(pick one to fill the form)</option></select>
+  <div class="hint" id="try-info"></div>
+
   <label for="source">Source</label>
   <select id="source" name="source"></select>
   <div class="hint" id="source-info"></div>
@@ -99,6 +104,41 @@
 const $ = (id) => document.getElementById(id);
 let sources = [];
 
+// Each fills the whole form; engines (optional) replaces the ticked set.
+const TRY = [
+  { label: "GEBCO 2025 around Antarctica", note: "Int16 bathymetry from a global lon/lat COG: every array engine should agree.",
+    source: "ausantarctic/gebco/GEBCO_2025", crs: "EPSG:3031", extent: "-4e6,4e6,-4e6,4e6", dim: "384,384", resample: "bilinear" },
+  { label: "Blue Marble, polar, straight to a nativeRaster", note: "RGBA imagery: gdal7-nara is GDAL's own picture, compared value by value with gdal-direct (the same warp as bands) and rwarp.",
+    source: "nasa_blue_marble", crs: "EPSG:3031", extent: "-4e6,4e6,-4e6,4e6", dim: "384,384", resample: "bilinear",
+    engines: ["gdal-direct", "gdal7-nara", "rwarp", "gdal-app"] },
+  { label: "Esri imagery over Tasmania, cubic", note: "A WMTS tile service read at an overview; its alpha band is found on the full-resolution dataset.",
+    source: "esri_world_imagery", crs: "+proj=laea +lat_0=-42 +lon_0=147", extent: "-6e5,6e5,-6e5,6e5", dim: "384,384", resample: "cubic",
+    engines: ["gdal-direct", "gdal7-nara", "rwarp", "gdal-app"] },
+  { label: "WA basemap: alpha handling", note: "Transparent areas: gdal7-run warps alpha as data (no -srcalpha), the others mask with it.",
+    source: "wa_gsd_basemap", crs: "EPSG:3857", extent: "12500000,13900000,-4200000,-1500000", dim: "384,384", resample: "bilinear",
+    engines: ["gdal-direct", "gdal7-nara", "gdal7-run", "rwarp", "gdal-app"] },
+  { label: "GHRSST SST, latest day, lanczos", note: "A dated source (pick another day above) and the widest kernel, where rwarp is slowest.",
+    source: "ausantarctic/ghrsst-mur-v2/analysed_sst", crs: "EPSG:3031", extent: "-5e6,5e6,-5e6,5e6", dim: "256,256", resample: "lanczos" },
+  { label: "COP90 mosaic over Tasmania: gti", note: "A VRT mosaic with no overviews: gti warps each tile from its own overviews, gdal-direct reads full resolution. Expect differences, and ~20 s.",
+    source: "cop90", crs: "+proj=laea +lat_0=-42 +lon_0=147", extent: "-1e5,1e5,-1e5,1e5", dim: "256,256", resample: "bilinear",
+    engines: ["gti", "gdal-direct"] },
+];
+
+function applyTry() {
+  const t = TRY[$("try").value];
+  if (!t) { $("try-info").textContent = ""; return; }
+  $("source").value = t.source; $("date").value = ""; showSourceInfo();
+  $("crs").value = t.crs; $("extent").value = t.extent; $("preset").value = "";
+  $("dim").value = t.dim; $("resample").value = t.resample; $("ovr").value = "auto";
+  if (t.engines) for (const i of $("engines").querySelectorAll("input")) i.checked = !i.disabled && t.engines.includes(i.value);
+  // the checkboxes' order is the reference order, so put the preset's first engine first
+  if (t.engines) for (const name of [...t.engines].reverse()) {
+    const i = $("engines").querySelector(`input[value="${name}"]`);
+    if (i) $("engines").prepend(i.parentElement);
+  }
+  $("try-info").textContent = t.note;
+}
+
 function fmt(x) {
   if (x === null || x === undefined) return "–";
   if (typeof x === "number") return Math.abs(x) >= 1000 || Number.isInteger(x) ? x.toLocaleString() : x.toPrecision(3);
@@ -138,6 +178,7 @@ async function init() {
     l.title = e.about;
     $("engines").appendChild(l);
   }
+  TRY.forEach((t, i) => { if (sources.some((s) => s.id === t.source)) $("try").add(new Option(t.label, i)); });
   applyPreset(); showSourceInfo();
   $("status").textContent = `${cat.length} sources. Pick one and a destination.`;
 }
@@ -169,8 +210,10 @@ function render(j) {
     (o.level < 0 ? "full resolution" : `overview ${o.level} (1/${fmt(o.factor)})`) + ` [${o.rule}]`;
   for (const [name, e] of Object.entries(j.engines)) {
     const c = document.createElement("div"); c.className = "card";
-    if (e.error) { c.innerHTML = `<h2>${name}</h2><p class="differs">${e.error}</p>`; $("cards").appendChild(c); continue; }
+    const about = e.about ? `<p class="about">${esc(e.about)}</p>` : "";
+    if (e.error) { c.innerHTML = `<h2>${name}</h2>${about}<p class="differs">${esc(e.error)}</p>`; $("cards").appendChild(c); continue; }
     const sec = Object.entries(e.seconds).map(([k, v]) => `<tr><td>${k} (s)</td><td>${fmt(v)}</td></tr>`).join("");
+    const det = Object.entries(e.detail || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(fmt(v))}</td></tr>`).join("");
     let vs = "";
     if (e.vs_reference) {
       const d = e.vs_reference;
@@ -181,12 +224,15 @@ function render(j) {
         <tr><td>mean |difference|</td><td>${fmt(d.mean_abs)}</td></tr>
         <tr><td>valid only in ${j.reference} / here</td><td>${fmt(d.valid_only_in_reference)} / ${fmt(d.valid_only_in_this)}</td></tr>`;
     }
-    c.innerHTML = `<h2>${name} ${e.vs_reference ? "" : "<small>reference</small>"}</h2><img alt="${name}" src="${e.png}"><table>${sec}${vs}</table>` +
+    c.innerHTML = `<h2>${name} ${e.vs_reference ? "" : "<small>reference</small>"}</h2>${about}<img alt="${name}" src="${e.png}"><table>${sec}${vs}${det}</table>` +
       (e.diff_png ? `<details><summary>difference image (white is equal; magenta is a value in only one)</summary><img alt="difference" src="${e.diff_png}"></details>` : "");
     $("cards").appendChild(c);
   }
 }
 
+function esc(s) { return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch])); }
+
+$("try").addEventListener("change", applyTry);
 $("preset").addEventListener("change", applyPreset);
 $("crs").addEventListener("input", () => ($("preset").value = ""));
 $("extent").addEventListener("input", () => ($("preset").value = ""));

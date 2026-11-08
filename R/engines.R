@@ -195,12 +195,44 @@ engine_gdal_direct_gdal7 <- function(req) {
        detail = list(backend = "GDAL7::warp_raster()"))
 }
 
+## GDAL7::warp_raster(nara = TRUE): the warp writes four Byte bands and one
+## interleaved GDAL read gives the nativeRaster, so the picture is GDAL's own
+## with nothing packed in R. Byte imagery only (grey, RGB, RGBA). The nara is
+## unpacked to bands only to compare values with the other engines; the PNG
+## is made from the nara itself (as_nara() uses it as is).
+engine_gdal7_nara <- function(req) {
+  if (!has_gdal7_warp()) stop("needs GDAL7 with warp_raster()", call. = FALSE)
+  if (req$type != "raw") stop(sprintf("nara needs Byte bands; this source is %s", req$dtype), call. = FALSE)
+  nb <- length(req$bands)
+  alpha <- if (is.na(req$alpha)) 0L else req$bands[req$alpha]
+  colour <- if (alpha > 0) setdiff(req$bands, alpha) else req$bands
+  if (!length(colour) %in% c(1L, 3L)) stop("nara needs 1 (grey) or 3 (RGB) colour bands, plus an optional alpha", call. = FALSE)
+  t0 <- now()
+  ds <- GDAL7::gdal_open(req$dsn, options = if (req$ovr$level >= 0) level_oo(req$ovr$level) else NULL)
+  on.exit(GDAL7::gdal_close(ds))
+  nara <- GDAL7::warp_raster(ds, req$dst_wkt, req$extent[c(1, 3, 2, 4)], size = req$dim,
+                             resample = req$resample, bands = c(colour, if (alpha > 0) alpha),
+                             alpha_band = alpha, nara = TRUE)
+  t1 <- now()
+  v <- as.vector(unclass(nara))   # row-major, one int per pixel: R | G << 8 | B << 16 | A << 24
+  byte <- function(k) as.raw(bitwAnd(bitwShiftR(v, 8L * k), 255L))
+  ## the bands the request asked for, in its order: grey is replicated in R, G, B
+  chan <- if (length(colour) == 1L) list(byte(0)) else list(byte(0), byte(1), byte(2))
+  if (alpha > 0) chan <- c(chan, list(byte(3)))
+  a <- pack_bands(chan[seq_len(nb)], req$dim[1], req$dim[2], "raw")
+  list(data = a, nodata = NULL, nara = nara,
+       seconds = c(total = now() - t0, warp = t1 - t0, unpack = now() - t1),
+       detail = list(backend = "GDAL7::warp_raster(nara = TRUE)",
+                     alpha = if (alpha > 0) sprintf("source band %d", alpha) else "none (GDAL's destination alpha marks pixels with no source)"))
+}
+
 ENGINES <- list(
   "rwarp"     = list(fun = engine_rwarp, about = "rwarp (Rust): warp_plan() + warp_exec(), reading with gdalraster"),
   "gdal-app"  = list(fun = engine_gdal_app, about = "gdalwarp as a library, via gdalraster::warp()"),
   "gdal7-run" = list(fun = engine_gdal7_run, about = "GDAL's `gdal raster reproject`, via GDAL7::gdal_run()"),
   "gti"       = list(fun = function(req) engine_gti(req), about = "GDAL's GTI driver over an index made from a VRT mosaic's XML: each tile warped onto the grid from its own overviews (mosaics only)"),
-  "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (GDAL7::warp_raster(), or the inst/cpp prototype)")
+  "gdal-direct" = list(fun = engine_gdal_direct, about = "GDAL's warp API directly: transformer + GDALWarpOperation (GDAL7::warp_raster(), or the inst/cpp prototype)"),
+  "gdal7-nara" = list(fun = engine_gdal7_nara, about = "GDAL7::warp_raster(nara = TRUE): GDAL warps and interleaves straight into a nativeRaster, the picture shown as is (Byte imagery only)")
 )
 
 #' The engines and whether each is available here
@@ -212,7 +244,8 @@ engines <- function() {
                            requireNamespace("gdalraster", quietly = TRUE),
                            requireNamespace("GDAL7", quietly = TRUE),
                            TRUE,
-                           has_gdal7_warp() || (requireNamespace("Rcpp", quietly = TRUE) && nzchar(Sys.which("gdal-config")))),
+                           has_gdal7_warp() || (requireNamespace("Rcpp", quietly = TRUE) && nzchar(Sys.which("gdal-config"))),
+                           has_gdal7_warp()),
              row.names = NULL, stringsAsFactors = FALSE)
 }
 

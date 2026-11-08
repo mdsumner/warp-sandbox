@@ -113,7 +113,7 @@ function(query, response) {
 
 #* Compare engines on one request: timings and differences from the first (the reference)
 #* @get /compare
-#* @query engines:string
+#* @query engines:[string]
 #* @query cold:boolean(true)
 #* @query images:boolean(false)
 #* @query palette:string("viridis")
