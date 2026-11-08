@@ -1,0 +1,21 @@
+# systemd user service for the warp sandbox: warpsandbox::sandbox_run() on
+# 127.0.0.1:$WARP_SANDBOX_PORT. Install with inst/systemd/install.sh.
+#   systemctl --user status warp-sandbox
+#   systemctl --user restart warp-sandbox   # after reinstalling packages
+#   journalctl --user -u warp-sandbox -f
+# R reads ~/.Renviron and ~/.Rprofile as usual (library paths, GDAL options).
+# Keeps running after logout only with lingering on (loginctl enable-linger).
+
+[Unit]
+Description=warp sandbox (plumber2) on 127.0.0.1, port WARP_SANDBOX_PORT
+
+[Service]
+Type=simple
+Environment=WARP_SANDBOX_PORT=8090
+WorkingDirectory=%h
+ExecStart=/usr/bin/Rscript -e warpsandbox::sandbox_run()
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

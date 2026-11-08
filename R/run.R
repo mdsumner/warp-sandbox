@@ -4,10 +4,15 @@
 #' SSH tunnel (`ssh -L 8090:localhost:8090 <host>`), then open
 #' http://localhost:8090/.
 #'
-#' @param port,host Where to listen.
+#' To keep it running, install it as a systemd user service:
+#' `inst/systemd/install.sh` (see the README).
+#'
+#' @param port,host Where to listen. The default port is the environment
+#'   variable `WARP_SANDBOX_PORT`, or 8090.
 #' @param block Block the R session (TRUE for a server).
 #' @export
-sandbox_run <- function(port = 8090, host = "127.0.0.1", block = TRUE) {
+sandbox_run <- function(port = as.integer(Sys.getenv("WARP_SANDBOX_PORT", "8090")),
+                        host = "127.0.0.1", block = TRUE) {
   ## room in GDAL's HTTP cache for a whole request, so warm timings are warm
   ## (it is read when /vsicurl/ is first used, so set it before that)
   if (!nzchar(gdalraster::get_config_option("CPL_VSIL_CURL_CACHE_SIZE"))) {

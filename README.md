@@ -15,6 +15,30 @@ then open <http://localhost:8090/>: pick a source and a destination (or one of
 the "Try these" examples, which fill the whole form), tick engines, and see each
 one's image, timings, details and differences from the first.
 
+### As a service
+
+To keep it running (and restart it if it fails), install it as a systemd user
+service. Once per user, as someone with sudo, turn on lingering so user
+services run without a login session:
+
+```sh
+sudo loginctl enable-linger <user>
+```
+
+Then, as the user:
+
+```sh
+bash "$(Rscript -e 'cat(system.file("systemd", package = "warpsandbox"))')"/install.sh   # [port], default 8090
+systemctl --user restart warp-sandbox      # after reinstalling warpsandbox, rwarp, GDAL7, ...
+journalctl --user -u warp-sandbox -f       # the log
+```
+
+The unit (`inst/systemd/warp-sandbox.service`) runs
+`Rscript -e warpsandbox::sandbox_run()` from your home directory. It reads
+`~/.Renviron` and `~/.Rprofile` as usual, and takes its port from
+`WARP_SANDBOX_PORT`. It still listens on 127.0.0.1 only, so you reach it
+through the SSH tunnel as before.
+
 ## Engines
 
 | engine | what |
