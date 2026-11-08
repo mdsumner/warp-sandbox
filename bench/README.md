@@ -76,3 +76,35 @@ per engine (GDAL's network statistics, fresh process each), cold and warm.
   edges: two 234 × 416 windows = 195 k pixels, **11.6x fewer**. A planner that
   splits a chunk whose source window wraps the dateline would cut cold time on
   remote data, which is the time that dominates (cold 2-4 s vs warm 0.01-0.7 s).
+
+## 5. Fetching every chunk at once (2026-11-08)
+
+After the dateline split (hypertidy/rwarp#57), the Pacific case reads 6x fewer
+bytes but was not faster cold: `warp_exec()` calls `read_fn` once per chunk,
+in turn, and GDAL reads a window's tile rows one after another, so 4 windows
+made 5 sequential requests. To source.coop each request costs 0.4-0.75 s before
+the first byte (Cloudflare to a distant origin) at about 5 MB/s.
+
+Tried, cold (`batch-fetch-probe.R`): one VRT over all the windows, GDAL7
+`advise_read()` per window, `GDAL_NUM_THREADS`, forked readers: none reliably
+better (GDAL did not issue parallel or multi-range requests for these reads).
+What works: `inst/cpp/read_windows.cpp` splits every window at its tile rows
+and reads each piece on its own thread with its own dataset handle, sharing
+GDAL's HTTP cache. The rwarp engine fetches all of a plan's windows this way
+before `warp_exec()` (`options(warpsandbox.prefetch = FALSE)` turns it off);
+same values.
+
+Live source.coop timings swing more than the effect (gdal-direct alone 1.1-2.5
+s), so `latency-local.R` serves a local COG of GEBCO overview 3 through
+`slow_range_server.py` with a fixed 0.4 s per request and 5 MB/s per connection.
+384x384 bilinear:
+
+| case | rwarp, prefetch | rwarp, per chunk | gdal-direct |
+|---|---|---|---|
+| antimeridian (laea lon_0=180, ±1500 km) | **1.35 s** | 1.79 s | 3.06 s |
+| pole inside (EPSG:3031, ±4000 km) | 3.37 s | 3.37 s | 3.18 s |
+| small oblique (Tasmania laea, ±1000 km) | 1.33 s | 1.32 s | 1.33 s |
+
+With no bandwidth limit (latency only) the antimeridian case was 1.29 / 1.67 /
+1.31 s: the split saves bytes, prefetch saves round trips, and it takes both to
+beat GDAL's one big request. Where the reads are the same, so are the times.

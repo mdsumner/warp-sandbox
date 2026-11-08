@@ -77,6 +77,20 @@ engine_rwarp <- function(req) {
     out <- array(switch(req$type, raw = as.raw(0), integer = if (is.null(nd)) 0L else as.integer(nd),
                         double = if (is.null(nd)) 0 else nd), c(req$dim[2], req$dim[1], nb))
   } else {
+    ## Fetch every chunk's window at once, on threads (inst/cpp/read_windows.cpp),
+    ## and answer read_fn from that: over HTTP the chunks' requests overlap
+    ## instead of queueing. options(warpsandbox.prefetch = FALSE) reads per chunk.
+    if (isTRUE(getOption("warpsandbox.prefetch", TRUE)) && length(plan[[1]]) > 1) {
+      t <- now()
+      win <- do.call(rbind, lapply(plan[[1]], function(c) c(c$src_xoff, c$src_yoff, c$src_xsize, c$src_ysize)))
+      got <- read_windows_fun()(req$dsn, level_oo(req$ovr$level), win, as.integer(req$bands), 16L)
+      key <- apply(win, 1, paste, collapse = ",")
+      fetch <- fetch + now() - t
+      read_fn <- function(xoff, yoff, xsize, ysize) {
+        v <- got[[match(paste(xoff, yoff, xsize, ysize, sep = ","), key)]]
+        conv(v)
+      }
+    }
     out <- rwarp::warp_exec(plan, read_fn, req$src_crs, g$gt, req$dst_wkt, req$dst_gt,
                             nbands = nb, resample = req$resample,
                             src_nodata = nd, dst_nodata = nd,
@@ -161,6 +175,26 @@ gdal_direct_fun <- function() {
   Rcpp::sourceCpp(src, env = e, cacheDir = cache, showOutput = FALSE)
   gdal_direct_env$f <- e$gdal_direct_warp
   gdal_direct_env$f
+}
+
+## inst/cpp/read_windows.cpp, compiled on first use like gdal-direct
+read_windows_env <- new.env()
+
+read_windows_fun <- function() {
+  if (!is.null(read_windows_env$f)) return(read_windows_env$f)
+  if (!requireNamespace("Rcpp", quietly = TRUE)) stop("needs Rcpp", call. = FALSE)
+  src <- system.file("cpp", "read_windows.cpp", package = "warpsandbox")
+  if (!nzchar(src)) src <- file.path("inst", "cpp", "read_windows.cpp")
+  cfg <- function(a) tryCatch(system2("gdal-config", a, stdout = TRUE), error = function(e) "")
+  old <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS"), unset = NA)
+  on.exit(for (n in names(old)) if (is.na(old[[n]])) Sys.unsetenv(n) else do.call(Sys.setenv, as.list(old[n])))
+  Sys.setenv(PKG_CPPFLAGS = cfg("--cflags"), PKG_LIBS = paste(cfg("--libs"), "-lpthread"))
+  cache <- tools::R_user_dir("warpsandbox", "cache")
+  dir.create(cache, recursive = TRUE, showWarnings = FALSE)
+  e <- new.env()
+  Rcpp::sourceCpp(src, env = e, cacheDir = cache, showOutput = FALSE)
+  read_windows_env$f <- e$gdal_read_windows
+  read_windows_env$f
 }
 
 has_gdal7_warp <- function() {
