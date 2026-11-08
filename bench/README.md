@@ -50,3 +50,29 @@ gap is in rwarp's kernels, largest for lanczos, which GDAL runs through a
 dedicated path (`GWKResampleOptimizedLanczos` in `gdalwarpkernel.cpp`). That
 is work in hypertidy/rwarp: profile the kernel loop there (a Rust bench on
 this case), not in the sandbox.
+
+## 4. Where could rwarp win? (`where-rwarp-wins.R`, 2026-11-08)
+
+Eight COG geometries (pole inside and off-centre, antimeridian, small oblique,
+identity, 2048² output, lanczos 1024², polar IBCSO to lon/lat), each with
+rwarp's plan, GDAL's chunks and kernel (`gdalwarp --debug on`), bytes and GETs
+per engine (GDAL's network statistics, fresh process each), cold and warm.
+
+- **Same reads, every case.** rwarp's plan and GDAL's warp chose the same single
+  source window, to the pixel, and fetched the same bytes in the same 2 GETs
+  (GDAL merges the ranges). So no fetch advantage today, and nothing for
+  concurrent fetching to overlap at this size.
+- **Warm, rwarp is 1.2-3.6x slower.** Worst on tiny work (identity 0.036 vs
+  0.010 s, small oblique 0.042 vs 0.017): a fixed ~20-25 ms (plan, R
+  conversions). Lanczos 1024²: 0.69 vs 0.27. Antimeridian: 0.157 vs 0.057, where
+  rwarp's source read passes 2.26 M pixels through R.
+- **Source type makes no difference.** Int16, Float32 and Byte (the same
+  geometry through vrt://) time the same. GDAL used `GWKRealCase` for all of
+  them, because GEBCO has nodata, which rules out its Byte fast paths.
+- **Plan reuse saves ~10 ms per date** (GHRSST, 10 dates: 67 -> 57 ms; gdal-direct 42 ms).
+- **The opportunity: the antimeridian.** Destination around 180° (laea lon_0=180,
+  ±1500 km): both engines read one full-width strip of the source, 5400 × 418
+  at overview 3 = 2.26 M pixels, 7.4 MB. The destination touches only two
+  edges: two 234 × 416 windows = 195 k pixels, **11.6x fewer**. A planner that
+  splits a chunk whose source window wraps the dateline would cut cold time on
+  remote data, which is the time that dominates (cold 2-4 s vs warm 0.01-0.7 s).

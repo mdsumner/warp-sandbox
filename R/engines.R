@@ -62,8 +62,11 @@ engine_rwarp <- function(req) {
     v
   }
   t1 <- now()
-  plan <- rwarp::warp_plan(req$src_crs, g$gt, g$dim, req$dst_wkt, req$dst_gt,
-                           dst_size = req$dim, resample = req$resample)
+  ## a plan given with the request is reused (same source grid and destination,
+  ## e.g. another date of a dated source); otherwise plan now
+  plan <- if (!is.null(req$plan)) req$plan else
+    rwarp::warp_plan(req$src_crs, g$gt, g$dim, req$dst_wkt, req$dst_gt,
+                     dst_size = req$dim, resample = req$resample)
   t_plan <- now() - t1
   nd <- if (is.na(g$nodata)) NULL else g$nodata
   nb <- length(req$bands)
