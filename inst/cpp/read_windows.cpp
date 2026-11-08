@@ -2,9 +2,10 @@
 // at the band's block-row boundaries, so every row of tiles is its own task,
 // and the tasks run on up to `threads` threads, each with its own dataset
 // handle (a GDALDataset is not thread-safe; GDAL's /vsicurl/ cache, shared
-// by all handles in the process, is). Over HTTP the requests then overlap:
-// about two round trips (the tile index, then the tiles) instead of one per
-// tile row per window.
+// by all handles in the process, is). Within one RasterIO GDAL already
+// fetches a window's tiles in parallel; what this adds is overlap across
+// windows, which separate RasterIO calls (one per rwarp chunk) don't have:
+// about two round trips (the tile index, then the tiles) for all windows.
 //
 // Returns a list with one double vector per window: xsize * ysize values per
 // band, row-major, bands one after another (as rwarp's read_fn returns),
